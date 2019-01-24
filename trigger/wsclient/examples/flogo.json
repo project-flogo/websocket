@@ -1,0 +1,84 @@
+{
+  "name": "wsclient",
+  "type": "flogo:app",
+  "version": "1.0.0",
+  "description": "This is a WSMessageTrigger",
+  "properties": null,
+  "channels": null,
+  "triggers": [
+    {
+      "name": "tibco-wssub",
+      "id": "flogo-WSMessageTrigger",
+      "ref": "github.com/project-flogo/websocket/trigger/wsclient",
+      "settings": {
+        "url": "ws://localhost:8000/ws"
+      },
+      "handlers": [
+        {
+          "settings": {
+          },
+          "actions": [
+            {
+              "id": "microgateway:Pets"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "id": "microgateway:Pets",
+      "compressed": false,
+      "data": {
+        "name": "Pets",
+        "steps": [
+          {
+            "service": "PetStorePets"
+          }
+        ],
+        "responses": [
+          {
+            "if": "$.PetStorePets.outputs.status != 200",
+            "error": true,
+            "output": {
+              "code": 403,
+              "data": {
+                "error": "Failure"
+              }
+            }
+          },
+          {
+            "if": "$.PetStorePets.outputs.status == 200",
+            "error": false,
+            "output": {
+              "code": 200,
+              "data": "=$.PetStorePets.outputs.data"
+            }
+          }
+        ],
+        "services": [
+          {
+            "name": "PetStorePets",
+            "description": "Get pets by ID from the petstore",
+            "ref": "github.com/project-flogo/contrib/activity/rest",
+            "settings": {
+              "uri": "http://petstore.swagger.io/v2/pet/4",
+              "method": "GET"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "ref": "github.com/project-flogo/microgateway",
+      "settings": {
+        "uri": "microgateway:Pets"
+      },
+      "id": "microgateway:Pets",
+      "metadata": null
+    }
+  ]
+}
