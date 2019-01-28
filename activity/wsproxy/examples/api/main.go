@@ -23,8 +23,9 @@ var (
 	server = flag.Bool("server", false, "run the echo websocket server")
 	client = flag.Bool("client", false, "run the client")
 
-	name = flag.String("name", "CLIENTNAME", "instance name")
-	url  = flag.String("url", "ws://localhost:9096/ws", "server url to connect")
+	name    = flag.String("name", "CLIENTNAME", "instance name")
+	url     = flag.String("url", "ws://localhost:9096/ws", "server url to connect")
+	maxconn = flag.String("maxconn", "2", "maximum number of connections")
 )
 
 func main() {
@@ -38,7 +39,7 @@ func main() {
 		return
 	}
 
-	e, err := examples.Example("2")
+	e, err := examples.Example(*maxconn)
 	if err != nil {
 		panic(err)
 	}

@@ -144,7 +144,7 @@ func newActionHandler(rt *Trigger, handler trigger.Handler, mode string) httprou
 				for {
 					_, message, err := rt.wsconn.ReadMessage()
 					if err != nil {
-						rt.logger.Errorf("error while reading websocket message: %s", err)
+						rt.logger.Infof("error while reading websocket message: %s", err)
 						break
 					}
 					handlerRoutine(message, handler)
