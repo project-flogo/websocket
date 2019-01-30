@@ -26,6 +26,7 @@ type WSProxy struct {
 
 var activityMd = activity.ToMetadata(&Settings{}, &Input{}, &Output{})
 
+// New create a new websocket proxy
 func New(ctx activity.InitContext) (activity.Activity, error) {
 	s := &Settings{}
 	err := metadata.MapToStruct(ctx.Settings(), s, true)
@@ -43,6 +44,7 @@ type Activity struct {
 	settings *Settings
 }
 
+// Metadata returns the metadata for a websocket proxy
 func (a *Activity) Metadata() *activity.Metadata {
 	return activityMd
 }
@@ -55,7 +57,7 @@ func (a *Activity) Eval(ctx activity.Context) (done bool, err error) {
 	wspService := &WSProxy{
 		serviceName: ctx.Name(),
 		clientConn:  input.WSconnection.(*websocket.Conn),
-		backendURL:  a.settings.Uri,
+		backendURL:  a.settings.URI,
 	}
 	if a.settings.MaxConnections == "" {
 		wspService.maxConnections = defaultMaxConnections

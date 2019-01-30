@@ -26,12 +26,12 @@ func Example(mode string, maxconn string) (engine.Engine, error) {
 	serviceStore.AddSetting("uri", "http://localhost:8080/pets")
 	serviceStore.AddSetting("method", "PUT")
 
-	if mode == "2" {
+	if mode == trigger.ModeConnection {
 		step := gateway.NewStep(serviceWS)
 		step.AddInput("wsconnection", "=$.payload.wsconnection")
 	}
 
-	if mode == "1" {
+	if mode == trigger.ModeMessage {
 		step := gateway.NewStep(serviceStore)
 		step.AddInput("content", "=$.payload.content")
 	}

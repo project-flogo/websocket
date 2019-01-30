@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+// Drain waits until a port is closed
 func Drain(port string) {
 	for {
 		conn, err := net.DialTimeout("tcp", net.JoinHostPort("", port), time.Second)
@@ -18,6 +19,7 @@ func Drain(port string) {
 	}
 }
 
+// Pour waits until a port is open
 func Pour(port string) {
 	for {
 		conn, _ := net.Dial("tcp", net.JoinHostPort("", port))

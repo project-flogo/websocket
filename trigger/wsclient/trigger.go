@@ -17,6 +17,7 @@ func init() {
 	trigger.Register(&Trigger{}, &Factory{})
 }
 
+// Factory for creating triggers
 type Factory struct {
 }
 
@@ -25,7 +26,7 @@ func (*Factory) Metadata() *trigger.Metadata {
 	return triggerMd
 }
 
-// Trigger REST trigger struct
+// Trigger trigger struct
 type Trigger struct {
 	runner   action.Runner
 	wsconn   *websocket.Conn
@@ -45,9 +46,8 @@ func (*Factory) New(config *trigger.Config) (trigger.Trigger, error) {
 	return &Trigger{settings: s, config: config}, nil
 }
 
-//Initialize
+// Initialize initializes the trigger
 func (t *Trigger) Initialize(ctx trigger.InitContext) error {
-
 	t.logger = ctx.Logger()
 	urlSetting := t.config.Settings["url"]
 	if urlSetting == nil || urlSetting.(string) == "" {
@@ -64,9 +64,9 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 	go func() {
 		for {
 			_, message, err := t.wsconn.ReadMessage()
-			fmt.Println("Message received :", string(message))
+			t.logger.Infof("Message received :", string(message))
 			if err != nil {
-				fmt.Errorf("error while reading websocket message: %s", err)
+				t.logger.Errorf("error while reading websocket message: %s", err)
 				break
 			}
 
@@ -75,7 +75,7 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 				out.Content = message
 				_, err := handler.Handle(context.Background(), out)
 				if err != nil {
-					fmt.Errorf("Run action  failed [%s] ", err)
+					t.logger.Errorf("Run action  failed [%s] ", err)
 				}
 			}
 		}
@@ -84,10 +84,12 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 	return nil
 }
 
+// Start starts the trigger
 func (t *Trigger) Start() error {
 	return nil
 }
 
+// Stop stops the trigger
 func (t *Trigger) Stop() error {
 	t.wsconn.Close()
 	return nil

@@ -18,10 +18,18 @@ import (
 
 var triggerMd = trigger.NewMetadata(&Settings{}, &Output{}, &HandlerSettings{})
 
+const (
+	// ModeMessage sends messages to the action
+	ModeMessage = "1"
+	// ModeConnection sends connections to the action
+	ModeConnection = "2"
+)
+
 func init() {
 	trigger.Register(&Trigger{}, &Factory{})
 }
 
+// Factory is a factory for websocket servers
 type Factory struct {
 }
 
@@ -30,7 +38,7 @@ func (*Factory) Metadata() *trigger.Metadata {
 	return triggerMd
 }
 
-// Trigger REST trigger struct
+// Trigger trigger struct
 type Trigger struct {
 	server   *Server
 	runner   action.Runner
@@ -50,7 +58,7 @@ func (*Factory) New(config *trigger.Config) (trigger.Trigger, error) {
 	return &Trigger{settings: s}, nil
 }
 
-//Initialize
+// Initialize initializes triggers
 func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 	t.logger = ctx.Logger()
 	router := httprouter.New()
@@ -115,17 +123,18 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 	return nil
 }
 
+// Start starts the trigger
 func (t *Trigger) Start() error {
 	return t.server.Start()
 }
 
+// Stop stops the trigger
 func (t *Trigger) Stop() error {
 	t.wsconn.Close()
 	return t.server.Stop()
 }
 
 func newActionHandler(rt *Trigger, handler trigger.Handler, mode string) httprouter.Handle {
-
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		rt.logger.Infof("received incomming request")
 
@@ -134,38 +143,38 @@ func newActionHandler(rt *Trigger, handler trigger.Handler, mode string) httprou
 		rt.wsconn = conn
 		if err != nil {
 			rt.logger.Errorf("upgrade error", err)
-		} else {
-			//upgraded to websocket connection
-			clientAdd := conn.RemoteAddr()
-			rt.logger.Infof("Upgraded to websocket protocol")
-			rt.logger.Infof("Remote address:", clientAdd)
-			if mode == "1" {
-				defer conn.Close()
-				for {
-					_, message, err := rt.wsconn.ReadMessage()
-					if err != nil {
-						rt.logger.Infof("error while reading websocket message: %s", err)
-						break
-					}
-					handlerRoutine(message, handler)
-				}
-				rt.logger.Infof("stopped listening to websocket endpoint")
-			}
-			if mode == "2" {
-				out := &Output{
-					QueryParams:  make(map[string]string),
-					PathParams:   make(map[string]string),
-					Headers:      make(map[string]string),
-					WSconnection: conn,
-				}
-				_, err := handler.Handle(context.Background(), out)
-				if err != nil {
-					rt.logger.Errorf("Run action  failed [%s] ", err)
-				}
-				rt.logger.Infof("stopped listening to websocket endpoint")
-			}
+			return
 		}
 
+		//upgraded to websocket connection
+		clientAdd := conn.RemoteAddr()
+		rt.logger.Infof("Upgraded to websocket protocol")
+		rt.logger.Infof("Remote address:", clientAdd)
+		switch mode {
+		case ModeMessage:
+			defer conn.Close()
+			for {
+				_, message, err := rt.wsconn.ReadMessage()
+				if err != nil {
+					rt.logger.Infof("error while reading websocket message: %s", err)
+					break
+				}
+				handlerRoutine(message, handler)
+			}
+			rt.logger.Infof("stopped listening to websocket endpoint")
+		case ModeConnection:
+			out := &Output{
+				QueryParams:  make(map[string]string),
+				PathParams:   make(map[string]string),
+				Headers:      make(map[string]string),
+				WSconnection: conn,
+			}
+			_, err := handler.Handle(context.Background(), out)
+			if err != nil {
+				rt.logger.Errorf("Run action  failed [%s] ", err)
+			}
+			rt.logger.Infof("stopped listening to websocket endpoint")
+		}
 	}
 }
 

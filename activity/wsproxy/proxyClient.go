@@ -114,19 +114,17 @@ func startProxyClient(wsp *WSProxy) error {
 	clientName := fmt.Sprintf("%s-%p-%s", wsp.serviceName, wsp.clientConn, wsp.clientConn.RemoteAddr())
 	pClient, err := pService.CreateProxyClient(clientName, wsp.clientConn)
 	if err != nil {
-		fmt.Errorf("error while creating proxy - %s", err.Error())
-		return nil
+		return fmt.Errorf("error while creating proxy - %s", err.Error())
 	}
 	defer pService.ReleaseProxyClient(pClient)
 	defer pClient.clientConn.Close()
 
 	conn, _, err := websocket.DefaultDialer.Dial(pService.backendURL, nil)
 	if err != nil {
-		fmt.Errorf("connection error: %s", err)
 		m := fmt.Sprintf("failed to connect backend url[%s]", pService.backendURL)
 		closeMessage := websocket.FormatCloseMessage(websocket.CloseNormalClosure, m)
 		pClient.clientConn.WriteMessage(websocket.CloseMessage, closeMessage)
-		return nil
+		return fmt.Errorf("connection error: %s", err)
 	}
 	pClient.serverConn = conn
 	defer pClient.serverConn.Close()
@@ -148,10 +146,9 @@ func startProxyClient(wsp *WSProxy) error {
 	}
 	if e, ok := err.(*websocket.CloseError); ok {
 		if websocket.IsUnexpectedCloseError(e, websocket.CloseNormalClosure, websocket.CloseAbnormalClosure) {
-			fmt.Errorf(errMessageTemplate, e.Code, e.Text)
-		} else {
-			fmt.Errorf(infoMessageTemplate, e.Code, e.Text)
+			return fmt.Errorf(errMessageTemplate, e.Code, e.Text)
 		}
+		return fmt.Errorf(infoMessageTemplate, e.Code, e.Text)
 	}
 
 	return nil
