@@ -1,0 +1,72 @@
+{
+  "name": "MyProxy",
+  "type": "flogo:app",
+  "version": "1.0.0",
+  "description": "Web Socket Proxy",
+  "properties": null,
+  "channels": null,
+  "triggers": [
+    {
+      "name": "WSProxy",
+      "id": "MyProxy",
+      "ref": "github.com/project-flogo/websocket/trigger/wsserver",
+      "settings": {
+        "port": "9096"
+      },
+      "handlers": [
+        {
+          "settings": {
+            "method": "GET",
+            "path": "/ws",
+            "mode": "2"
+          },
+          "actions": [
+            {
+              "id": "microgateway:Websocket"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "id": "microgateway:Websocket",
+      "compressed": false,
+      "data": {
+        "name": "Pets",
+        "steps": [
+          {
+            "service": "WSProxy",
+            "input": {
+              "wsconnection": "=$.payload.wsconnection"
+            }
+          }
+        ],
+        "responses": [
+        ],
+        "services": [
+          {
+            "name": "WSProxy",
+            "description": "Web Socket Service",
+            "ref": "github.com/project-flogo/websocket/activity/wsproxy",
+            "settings": {
+              "uri": "ws://localhost:8080/ws",
+              "maxconnections": "2"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "ref": "github.com/project-flogo/microgateway",
+      "settings": {
+        "uri": "microgateway:Websocket"
+      },
+      "id": "microgateway:Websocket",
+      "metadata": null
+    }
+  ]
+}

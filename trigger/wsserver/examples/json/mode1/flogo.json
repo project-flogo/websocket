@@ -1,0 +1,95 @@
+{
+  "name": "wstrigger",
+  "type": "flogo:app",
+  "version": "1.0.0",
+  "description": "This is a Web Socket Trigger",
+  "properties": null,
+  "channels": null,
+  "triggers": [
+    {
+      "name": "tibco-wssub",
+      "id": "flogo-WSMessageTrigger",
+      "ref": "github.com/project-flogo/websocket/trigger/wsserver",
+      "settings": {
+        "port": "9096",
+        "enableTLS": false,
+        "serverCert": "",
+        "serverKey": "",
+        "enableClientAuth": false,
+        "trustStore": ""
+      },
+      "handlers": [
+        {
+          "settings": {
+            "method": "GET",
+            "path": "/ws",
+            "mode": "1"
+          },
+          "actions": [
+            {
+              "id": "microgateway:Pets"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "id": "microgateway:Pets",
+      "compressed": false,
+      "data": {
+        "name": "Pets",
+        "steps": [
+          {
+            "service": "PetStorePets",
+            "input": {
+              "content": "=$.payload.content"
+            }
+          }
+        ],
+        "responses": [
+          {
+            "if": "$.PetStorePets.outputs.status != 200",
+            "error": true,
+            "output": {
+              "code": 403,
+              "data": {
+                "error": "Failure"
+              }
+            }
+          },
+          {
+            "if": "$.PetStorePets.outputs.status == 200",
+            "error": false,
+            "output": {
+              "code": 200,
+              "data": "=$.PetStorePets.outputs.data"
+            }
+          }
+        ],
+        "services": [
+          {
+            "name": "PetStorePets",
+            "description": "Get pets by ID from the petstore",
+            "ref": "github.com/project-flogo/contrib/activity/rest",
+            "settings": {
+              "uri": "http://localhost:8080/pets",
+              "method": "PUT"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "ref": "github.com/project-flogo/microgateway",
+      "settings": {
+        "uri": "microgateway:Pets"
+      },
+      "id": "microgateway:Pets",
+      "metadata": null
+    }
+  ]
+}

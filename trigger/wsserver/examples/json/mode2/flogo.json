@@ -1,0 +1,77 @@
+{
+  "name": "wstrigger",
+  "type": "flogo:app",
+  "version": "1.0.0",
+  "description": "This is a Web Socket Trigger",
+  "properties": null,
+  "channels": null,
+  "triggers": [
+    {
+      "name": "tibco-wssub",
+      "id": "flogo-WSMessageTrigger",
+      "ref": "github.com/project-flogo/websocket/trigger/wsserver",
+      "settings": {
+        "port": "9096",
+        "enableTLS": false,
+        "serverCert": "",
+        "serverKey": "",
+        "enableClientAuth": false,
+        "trustStore": ""
+      },
+      "handlers": [
+        {
+          "settings": {
+            "method": "GET",
+            "path": "/ws",
+            "mode": "2"
+          },
+          "actions": [
+            {
+              "id": "microgateway:wsproxy"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "id": "microgateway:wsproxy",
+      "compressed": false,
+      "data": {
+        "name": "wsproxy",
+        "steps": [
+          {
+            "service": "WSProxy",
+            "input": {
+              "wsconnection": "=$.payload.wsconnection"
+            }
+          }
+        ],
+        "responses": [
+        ],
+        "services": [
+          {
+            "name": "WSProxy",
+            "description": "Web socket service",
+            "ref": "github.com/project-flogo/websocket/activity/wsproxy",
+            "settings": {
+              "uri": "ws://localhost:8080/ws",
+              "maxconnections": "2"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "ref": "github.com/project-flogo/microgateway",
+      "settings": {
+        "uri": "microgateway:wsproxy"
+      },
+      "id": "microgateway:wsproxy",
+      "metadata": null
+    }
+  ]
+}
