@@ -26,6 +26,8 @@ github.com/project-flogo/core v0.9.0-alpha.4 h1:ny3yB8vMBRXxIXuk3V2DYxVDUN6HlqUQ
 github.com/project-flogo/core v0.9.0-alpha.4/go.mod h1:BHeB55AxPhvlNGd+it50rE977ag6xE3bD2RluSDeKBA=
 github.com/project-flogo/core v0.9.0-alpha.4.0.20190116201316-ba1703f1f4cf h1:8ix+yZGUm+bliXHrm2jKTFUV6IPa+3U4DR9s9dq326Y=
 github.com/project-flogo/core v0.9.0-alpha.4.0.20190116201316-ba1703f1f4cf/go.mod h1:BHeB55AxPhvlNGd+it50rE977ag6xE3bD2RluSDeKBA=
+github.com/project-flogo/core v0.9.0-alpha.4.0.20190130143800-ebaa4200c4ac h1:oqNBrD483hgLQ03/HwBGWE4/TyEkjMN8GrMPCyHk1sY=
+github.com/project-flogo/core v0.9.0-alpha.4.0.20190130143800-ebaa4200c4ac/go.mod h1:Dof6t60n/nvN7aPpoUz97JL+VIKdsYMbhqwN++WCdz8=
 github.com/project-flogo/microgateway v0.0.0-20190123211624-c3c60c0efa8d h1:zycS+cHxPiOd6LYNzVgP/JT6yBC8vlxj5hCsDzVpAeg=
 github.com/project-flogo/microgateway v0.0.0-20190123211624-c3c60c0efa8d/go.mod h1:BA3q9hZTUbZ6BEEEru5jV1Tf4/3lrkJSKsfbet00R+M=
 github.com/stretchr/objx v0.1.1/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
