@@ -1,0 +1,22 @@
+{
+  "name": "ws",
+  "type": "flogo:activity",
+  "version": "0.0.1",
+  "title": "Websocket Activity",
+  "description": "Websocket Activity",
+  "homepage": "https://github.com/project-flogo/websocket/tree/master/activity/ws",
+  "settings": [
+    {
+      "name": "uri",
+      "type": "string",
+      "required": true
+    }
+  ],
+  "input": [
+    {
+      "name": "message",
+      "type": "any"
+    }
+  ],
+  "output": []
+}
