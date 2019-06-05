@@ -35,7 +35,7 @@ An example `step` that invokes the above `ProxyWebSocketService` service using `
 {
     "service": "ProxyWebSocketService",
     "input": {
-        "wsconnection":"${payload.wsconnection}"
+        "wsconnection":"=$.payload.wsconnection"
     }
 }
 ```
