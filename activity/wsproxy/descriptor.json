@@ -1,0 +1,30 @@
+{
+  "name": "wsproxy",
+  "type": "flogo:activity",
+  "version": "0.0.1",
+  "title": "Websocket proxy",
+  "description": "The websocket proxy forwards traffic to another websocket",
+  "homepage": "https://github.com/project-flogo/websocket/tree/master/activity/wsproxy",
+  "settings": [
+    {
+      "name": "uri",
+      "type": "string",
+      "required": true,
+      "description": "Backend websocket uri to connect"
+    },
+    {
+      "name": "maxconnections",
+      "type": "string",
+      "description": "Maximum allowed concurrent connections(default 5)"
+    }
+  ],
+  "input": [
+    {
+      "name": "wsconnection",
+      "type": "any",
+      "required": true,
+      "description": "Websocket connection object"
+    }
+  ],
+  "output": []
+}

@@ -9,13 +9,15 @@
     {
       "name": "uri",
       "type": "string",
-      "required": true
+      "required": true,
+      "description": "Backend websocket uri to connect"
     }
   ],
   "input": [
     {
       "name": "message",
-      "type": "any"
+      "type": "any",
+      "description": "A message to send"
     }
   ],
   "output": []

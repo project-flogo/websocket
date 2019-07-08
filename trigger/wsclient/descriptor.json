@@ -1,0 +1,27 @@
+{
+  "name": "wsclient",
+  "type": "flogo:trigger",
+  "version": "0.0.1",
+  "title": "Websocket Client",
+  "description": "Websocket client connects to a websocket server",
+  "homepage": "https://github.com/project-flogo/websocket/tree/master/trigger/wsclient",
+  "settings": [
+    {
+      "name": "url",
+      "type": "string",
+      "required": true,
+      "description": "The websocket url to connect to."
+    }
+  ],
+  "output": [
+    {
+      "name": "content",
+      "type": "any",
+      "description": "Websocket request payload"
+    }
+  ],
+  "reply": [],
+  "handler": {
+    "settings": []
+  }
+}

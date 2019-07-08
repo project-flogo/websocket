@@ -1,0 +1,92 @@
+{
+  "name": "wsserver",
+  "type": "flogo:trigger",
+  "version": "0.0.1",
+  "title": "Websocket Server",
+  "description": "Websocket server starts a server",
+  "homepage": "https://github.com/project-flogo/websocket/tree/master/trigger/wsserver",
+  "settings": [
+    {
+      "name": "port",
+      "type": "int",
+      "required": true,
+      "description": "The port to listen on"
+    },
+    {
+      "name": "enableTLS",
+      "type": "bool",
+      "description": "true - To enable TLS (Transport Layer Security), false - No TLS security"
+    },
+    {
+      "name": "serverCert",
+      "type": "string",
+      "description": "Server certificate file in PEM format. Need to provide file name along with path. Path can be relative to gateway binary location."
+    },
+    {
+      "name": "serverKey",
+      "type": "string",
+      "description": "Server private key file in PEM format. Need to provide file name along with path. Path can be relative to gateway binary location."
+    },
+    {
+      "name": "enableClientAuth",
+      "type": "bool",
+      "description": "true - To enable client AUTH, false - Client AUTH is not enabled"
+    },
+    {
+      "name": "trustStore",
+      "type": "string",
+      "description": "Trust dir containing clinet CAs"
+    }
+  ],
+  "output": [
+    {
+      "name": "pathParams",
+      "type": "params",
+      "description": "HTTP request path params"
+    },
+    {
+      "name": "queryParams",
+      "type": "params",
+      "description": "HTTP request query params"
+    },
+    {
+      "name": "headers",
+      "type": "params",
+      "description": "HTTP request header params. Header key gets converted in to canonical format, i.e. the first letter and any letter following a hyphen to upper case, the rest are converted to lowercase. For example, the canonical key for \"accept-encoding\" and \"host\" are \"Accept-Encoding\" and \"Host\" respectively"
+    },
+    {
+      "name": "content",
+      "type": "any",
+      "description": "HTTP request payload"
+    },
+    {
+      "name": "wsconnection",
+      "type": "any",
+      "description": "The websocket connection"
+    }
+  ],
+  "reply": [],
+  "handler": {
+    "settings": [
+      {
+        "name": "method",
+        "type": "string",
+        "required": true,
+        "allowed": ["GET", "POST", "PUT", "PATCH", "DELETE"],
+        "description": "HTTP request method. It can be"
+      },
+      {
+        "name": "path",
+        "type": "string",
+        "required": true,
+        "description": "URL path to be registered with handler"
+      },
+      {
+        "name": "mode",
+        "type": "string",
+        "required": true,
+        "description": "\"1\" for output with content and \"2\" for output with wsconnection"
+      }
+    ]
+  }
+}
