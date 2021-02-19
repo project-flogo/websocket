@@ -180,7 +180,11 @@ func newActionHandler(rt *Trigger, handler trigger.Handler, mode string) httprou
 
 func handlerRoutine(message []byte, handler trigger.Handler) error {
 	var content interface{}
-	json.NewDecoder(bytes.NewBuffer(message)).Decode(&content)
+	if isJSON(message) {
+		json.NewDecoder(bytes.NewBuffer(message)).Decode(&content)
+	} else {
+		content = string(message)
+	}
 	out := &Output{}
 	out.Content = content
 	_, err := handler.Handle(context.Background(), out)
@@ -188,4 +192,9 @@ func handlerRoutine(message []byte, handler trigger.Handler) error {
 		return fmt.Errorf("Run action  failed [%s] ", err)
 	}
 	return nil
+}
+
+func isJSON(str []byte) bool {
+	var js json.RawMessage
+	return json.Unmarshal(str, &js) == nil
 }
