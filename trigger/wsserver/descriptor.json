@@ -41,17 +41,17 @@
   "output": [
     {
       "name": "pathParams",
-      "type": "params",
+      "type": "object",
       "description": "HTTP request path params"
     },
     {
       "name": "queryParams",
-      "type": "params",
+      "type": "object",
       "description": "HTTP request query params"
     },
     {
       "name": "headers",
-      "type": "params",
+      "type": "object",
       "description": "HTTP request header params. Header key gets converted in to canonical format, i.e. the first letter and any letter following a hyphen to upper case, the rest are converted to lowercase. For example, the canonical key for \"accept-encoding\" and \"host\" are \"Accept-Encoding\" and \"Host\" respectively"
     },
     {
