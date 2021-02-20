@@ -85,7 +85,8 @@
         "name": "mode",
         "type": "string",
         "required": true,
-        "description": "\"1\" for output with content and \"2\" for output with wsconnection"
+        "allowed": ["Data", "Connection"],
+        "description": "\"Data\" Mode for output with content and \"Connection\" Mode for output with websocket connection"
       }
     ]
   }

@@ -20,9 +20,9 @@ var triggerMd = trigger.NewMetadata(&Settings{}, &Output{}, &HandlerSettings{})
 
 const (
 	// ModeMessage sends messages to the action
-	ModeMessage = "1"
+	ModeMessage = "Data"
 	// ModeConnection sends connections to the action
-	ModeConnection = "2"
+	ModeConnection = "Connection"
 )
 
 func init() {
