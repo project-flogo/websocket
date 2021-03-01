@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"
@@ -141,23 +142,7 @@ func replacePath(path string) string {
 
 func newActionHandler(rt *Trigger, handler trigger.Handler, mode string) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-
-		// upgrade conn
 		rt.logger.Infof("received incomming request")
-
-		upgrader := websocket.Upgrader{}
-		conn, err := upgrader.Upgrade(w, r, nil)
-		rt.wsconn = conn
-		if err != nil {
-			rt.logger.Errorf("upgrade error", err)
-			return
-		}
-
-		//upgraded to websocket connection
-		clientAdd := conn.RemoteAddr()
-		rt.logger.Infof("Upgraded to websocket protocol")
-		rt.logger.Infof("Remote address:", clientAdd)
-
 		out := &Output{
 			QueryParams: make(map[string]interface{}),
 			PathParams:  make(map[string]string),
@@ -187,10 +172,9 @@ func newActionHandler(rt *Trigger, handler trigger.Handler, mode string) httprou
 		//QueryParams
 		queryParamMetadata, _ := outconfigured["queryParams"]
 		if queryParamMetadata != nil {
-			resultWithQueryparams, err := ParseOutputQueryParams(queryParamMetadata, r, rt)
+			resultWithQueryparams, err := ParseOutputQueryParams(queryParamMetadata, r, w, rt)
 			if err != nil {
-				//return
-				rt.logger.Info("Error parsing query params: ", err)
+				return
 			} else if resultWithQueryparams != nil {
 				out.QueryParams = resultWithQueryparams
 			}
@@ -198,14 +182,26 @@ func newActionHandler(rt *Trigger, handler trigger.Handler, mode string) httprou
 		//Headers
 		headerMetadata, _ := outconfigured["headers"]
 		if headerMetadata != nil {
-			resultWithHeaders, err := ParseOutputHeaders(headerMetadata, r, rt)
+			resultWithHeaders, err := ParseOutputHeaders(headerMetadata, r,w, rt)
 			if err != nil {
-				rt.logger.Info("Unable to parse Headers: ", err)
-				//return
+				//rt.logger.Info("Unable to parse Headers: ", err)
+				return
 			} else if resultWithHeaders != nil {
 				out.Headers = resultWithHeaders
 			}
 		}
+
+		// upgrade conn
+		upgrader := websocket.Upgrader{}
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			rt.logger.Errorf("upgrade error", err)
+			return
+		}
+		rt.wsconn = conn
+		clientAdd := conn.RemoteAddr()
+		rt.logger.Infof("Upgraded to websocket protocol")
+		rt.logger.Infof("Remote address:", clientAdd)
 
 		// params
 		switch mode {
@@ -378,7 +374,7 @@ func ParseOutputPathParams(outputJsonData interface{}, ps httprouter.Params, rt 
 	return nil, nil
 }
 
-func ParseOutputQueryParams(outputJsonData interface{}, r *http.Request, rt *Trigger) (map[string]interface{}, error) {
+func ParseOutputQueryParams(outputJsonData interface{}, r *http.Request, w http.ResponseWriter, rt *Trigger) (map[string]interface{}, error) {
 	/*for key, val := range outputJsonData.(map[string]interface{}){
 		fmt.Println("*****query params key is :", key, " *****value is : ", val)
 	}*/
@@ -397,7 +393,8 @@ func ParseOutputQueryParams(outputJsonData interface{}, r *http.Request, rt *Tri
 				if !notEmpty(value) && strings.EqualFold(qParam.Required, "true") {
 					errMsg := fmt.Sprintf("Required query parameter [%s] is not set", qParam.Name)
 					rt.logger.Info(errMsg)
-					return nil, nil
+					http.Error(w, errMsg, http.StatusBadRequest)
+					return nil, errors.New(errMsg)
 				}
 
 				if notEmpty(value) {
@@ -405,7 +402,8 @@ func ParseOutputQueryParams(outputJsonData interface{}, r *http.Request, rt *Tri
 					if err != nil {
 						errMsg := fmt.Sprintf("Fail to validate query parameter: %v", err)
 						rt.logger.Info(errMsg)
-						return nil, nil
+						http.Error(w, errMsg, http.StatusBadRequest)
+						return nil, errors.New(errMsg)
 					}
 					if qParam.Repeating == "false" {
 						queryParams[qParam.Name] = values[0]
@@ -421,7 +419,7 @@ func ParseOutputQueryParams(outputJsonData interface{}, r *http.Request, rt *Tri
 	return nil, nil
 }
 
-func ParseOutputHeaders(outputJsonData interface{}, r *http.Request, rt *Trigger) (map[string]interface{}, error) {
+func ParseOutputHeaders(outputJsonData interface{}, r *http.Request, w http.ResponseWriter, rt *Trigger) (map[string]interface{}, error) {
 	sec, err := ParseTillValue(outputJsonData)
 	if err != nil {
 		rt.logger.Info("Unable to convert table value data to object", err)
@@ -439,14 +437,16 @@ func ParseOutputHeaders(outputJsonData interface{}, r *http.Request, rt *Trigger
 				if len(value) == 0 && hParam.Required == "true" {
 					errMsg := fmt.Sprintf("Required header [%s] is not set", hParam.Name)
 					rt.logger.Info(errMsg)
-					return nil, nil
+					http.Error(w, errMsg, http.StatusBadRequest)
+					return nil, errors.New(errMsg)
 				}
 				if len(value) > 0 {
 					values, err := getValuewithType(hParam, value)
 					if err != nil {
 						errMsg := fmt.Sprintf("Fail to validate header parameter: %v", err)
 						rt.logger.Info(errMsg)
-						return nil, nil
+						http.Error(w, errMsg, http.StatusBadRequest)
+						return nil, errors.New(errMsg)
 					}
 					if hParam.Repeating == "false" {
 						headers[hParam.Name] = values[0]

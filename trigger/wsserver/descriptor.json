@@ -41,17 +41,17 @@
   "output": [
     {
       "name": "pathParams",
-      "type": "object",
+      "type": "params",
       "description": "HTTP request path params"
     },
     {
       "name": "queryParams",
-      "type": "object",
+      "type": "params",
       "description": "HTTP request query params"
     },
     {
       "name": "headers",
-      "type": "object",
+      "type": "params",
       "description": "HTTP request header params. Header key gets converted in to canonical format, i.e. the first letter and any letter following a hyphen to upper case, the rest are converted to lowercase. For example, the canonical key for \"accept-encoding\" and \"host\" are \"Accept-Encoding\" and \"Host\" respectively",
       "value": "[{\"parameterName\":\"Accept\",\"type\":\"string\",\"repeating\":\"false\",\"required\":\"false\",\"visible\":false},{\"parameterName\":\"Accept-Charset\",\"type\":\"string\",\"repeating\":\"false\",\"required\":\"false\",\"visible\":false},{\"parameterName\":\"Accept-Encoding\",\"type\":\"string\",\"repeating\":\"false\",\"required\":\"false\",\"visible\":false},{\"parameterName\":\"Content-Type\",\"type\":\"string\",\"repeating\":\"false\",\"required\":\"false\",\"visible\":false},{\"parameterName\":\"Content-Length\",\"type\":\"string\",\"repeating\":\"false\",\"required\":\"false\",\"visible\":false},{\"parameterName\":\"Connection\",\"type\":\"string\",\"repeating\":\"false\",\"required\":\"false\",\"visible\":false},{\"parameterName\":\"Cookie\",\"type\":\"string\",\"repeating\":\"false\",\"required\":\"false\",\"visible\":false},{\"parameterName\":\"Pragma\",\"type\":\"string\",\"repeating\":\"false\",\"required\":\"false\",\"visible\":false},{\"parameterName\":\"Sec-Websocket-Key\",\"type\":\"string\",\"repeating\":\"false\",\"required\":\"false\",\"visible\":false},{\"parameterName\":\"Sec-Websocket-Version\",\"type\":\"string\",\"repeating\":\"false\",\"required\":\"false\",\"visible\":false},{\"parameterName\":\"Upgrade\",\"type\":\"string\",\"repeating\":\"false\",\"required\":\"false\",\"visible\":false}]"
     },
