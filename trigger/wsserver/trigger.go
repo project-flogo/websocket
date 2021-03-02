@@ -6,6 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
+	"net/http"
+	"strconv"
+	"strings"
+
 	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"
 	"github.com/project-flogo/core/action"
@@ -13,9 +18,6 @@ import (
 	"github.com/project-flogo/core/data/metadata"
 	"github.com/project-flogo/core/support/log"
 	"github.com/project-flogo/core/trigger"
-	"net/http"
-	"strconv"
-	"strings"
 )
 
 var triggerMd = trigger.NewMetadata(&Settings{}, &Output{}, &HandlerSettings{})
@@ -182,7 +184,7 @@ func newActionHandler(rt *Trigger, handler trigger.Handler, mode string) httprou
 		//Headers
 		headerMetadata, _ := outconfigured["headers"]
 		if headerMetadata != nil {
-			resultWithHeaders, err := ParseOutputHeaders(headerMetadata, r,w, rt)
+			resultWithHeaders, err := ParseOutputHeaders(headerMetadata, r, w, rt)
 			if err != nil {
 				//rt.logger.Info("Unable to parse Headers: ", err)
 				return
@@ -229,7 +231,8 @@ func newActionHandler(rt *Trigger, handler trigger.Handler, mode string) httprou
 
 func handlerRoutine(message []byte, handler trigger.Handler, out *Output) error {
 	var content interface{}
-	if isJSON(message) {
+	if (handler.Settings()["format"] != nil && handler.Settings()["format"].(string) == "JSON") ||
+		(handler.Settings()["format"] == nil && isJSON(message)) {
 		json.NewDecoder(bytes.NewBuffer(message)).Decode(&content)
 	} else {
 		content = string(message)
