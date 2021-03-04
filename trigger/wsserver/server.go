@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -13,7 +14,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/project-flogo/core/data/coerce"
+	"github.com/project-flogo/core/support/log"
 )
+
+var logger = log.ChildLogger(log.RootLogger(), "WSTrigger-Server")
 
 // Graceful shutdown HttpServer from: https://github.com/corneldamian/httpway/blob/master/server.go
 
@@ -72,12 +78,32 @@ func (s *Server) Start() error {
 
 	if s.enableTLS {
 		//TLS is enabled, load server certificate & key files
-		cer, err := tls.LoadX509KeyPair(s.serverCert, s.serverKey)
-		if err != nil {
-			fmt.Printf("Error while loading certificates - %v", err)
-			return err
+		logger.Info("Reading certificates")
+		var cer tls.Certificate
+		if strings.HasPrefix(s.serverKey, "{") || strings.Contains(s.serverKey, ",") || strings.HasPrefix(s.serverKey, "-----") {
+			// certfile uploaded in FE via filepicker, or keys configured via app property in base64 encoded, or raw form
+			privateKey, err := decodeCerts(s.serverKey)
+			if err != nil {
+				return err
+			}
+			caCertificate, err := decodeCerts(s.serverCert)
+			if err != nil {
+				return err
+			}
+			cer, err = tls.X509KeyPair(caCertificate, privateKey)
+			if err != nil {
+				fmt.Printf("Error while loading certificates - %v", err)
+				return err
+			}
+		} else {
+			// configured cert file path in OSS way
+			var err error
+			cer, err = tls.LoadX509KeyPair(s.serverCert, s.serverKey)
+			if err != nil {
+				fmt.Printf("Error while loading certificates - %v", err)
+				return err
+			}
 		}
-
 		var config *tls.Config
 		if s.enableClientAuth {
 			caCertPool, err := getCerts(s.trustStore)
@@ -227,4 +253,58 @@ func getCerts(trustStore string) (*x509.CertPool, error) {
 		return certPool, fmt.Errorf("Failed to read trusted certificates from [%s]  After processing all files in the directory no valid trusted certs were found", trustStore)
 	}
 	return certPool, nil
+}
+
+func decodeCerts(certVal string) ([]byte, error) {
+	if certVal == "" {
+		return nil, fmt.Errorf("Certificate is Empty")
+	}
+
+	//if certificate comes from fileselctor it will be base64 encoded
+	if strings.HasPrefix(certVal, "{") {
+		logger.Info("Certificate received from FileSelector")
+		certObj, err := coerce.ToObject(certVal)
+		if err == nil {
+			certRealValue, ok := certObj["content"].(string)
+			logger.Info("Fetched Content from Certificate Object")
+			if !ok || certRealValue == "" {
+				return nil, fmt.Errorf("Didn't found the certificate content")
+			}
+
+			index := strings.IndexAny(certRealValue, ",")
+			if index > -1 {
+				certRealValue = certRealValue[index+1:]
+			}
+
+			return base64.StdEncoding.DecodeString(certRealValue)
+		}
+		return nil, err
+	}
+
+	//if the certificate comes from application properties need to check whether that it contains , ans encoding
+	index := strings.IndexAny(certVal, ",")
+
+	if index > -1 {
+		//some encoding is there
+		logger.Debug("Certificate received from App properties with encoding")
+		encoding := certVal[:index]
+		certRealValue := certVal[index+1:]
+
+		if strings.EqualFold(encoding, "base64") {
+			return base64.StdEncoding.DecodeString(certRealValue)
+		}
+		return nil, fmt.Errorf("Error in parsing the certificates Or we may be not be supporting the given encoding")
+	}
+
+	logger.Debug("Certificate received from App properties without encoding")
+
+	//===========These blocks of code to be removed after sriharsha fixes FLOGO-2673=================================
+	first := strings.TrimSpace(certVal[:strings.Index(certVal, "----- ")] + "-----")
+	middle := strings.TrimSpace(certVal[strings.Index(certVal, "----- ")+5 : strings.Index(certVal, " -----")])
+	strings.Replace(middle, " ", "\n", -1)
+	last := strings.TrimSpace(certVal[strings.Index(certVal, " -----"):])
+	certVal = first + "\n" + middle + "\n" + last
+	//===========These blocks of code to be removed after sriharsha fixes FLOGO-2673=================================
+
+	return []byte(certVal), nil
 }
