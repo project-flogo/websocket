@@ -206,9 +206,12 @@ func newActionHandler(rt *Trigger, handler trigger.Handler, mode string) httprou
 		rt.logger.Infof("Remote address:", clientAdd)
 
 		// params
+		defer func() {
+			rt.logger.Info("Closing connection while going out of trigger handler")
+			conn.Close()
+		}()
 		switch mode {
 		case ModeMessage:
-			defer conn.Close()
 			for {
 				_, message, err := rt.wsconn.ReadMessage()
 				if err != nil {
