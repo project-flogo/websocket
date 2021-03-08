@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-
 	"net/http"
 	"strconv"
 	"strings"
@@ -46,9 +45,14 @@ func (*Factory) Metadata() *trigger.Metadata {
 type Trigger struct {
 	server   *Server
 	runner   action.Runner
-	wsconn   *websocket.Conn
+	handlers []*HandlerWrapper
 	settings *Settings
 	logger   log.Logger
+}
+
+type HandlerWrapper struct {
+	handler      trigger.Handler
+	wsconnection *websocket.Conn
 }
 
 // New implements trigger.Factory.New
@@ -107,7 +111,6 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 
 	// Init handlers
 	for _, handler := range ctx.GetHandlers() {
-
 		s := &HandlerSettings{}
 		err := metadata.MapToStruct(handler.Settings(), s, true)
 		if err != nil {
@@ -117,7 +120,9 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 		method := s.Method
 		path := s.Path
 		mode := s.Mode
-		router.Handle(method, replacePath(path), newActionHandler(t, handler, mode))
+		tHandler := &HandlerWrapper{handler: handler}
+		t.handlers = append(t.handlers, tHandler)
+		router.Handle(method, replacePath(path), newActionHandler(t, tHandler, mode))
 	}
 
 	t.logger.Debugf("Configured on port %d", t.settings.Port)
@@ -133,7 +138,13 @@ func (t *Trigger) Start() error {
 
 // Stop stops the trigger
 func (t *Trigger) Stop() error {
-	t.wsconn.Close()
+	t.logger.Info("Stopping Trigger")
+	for _, handler := range t.handlers {
+		if handler.wsconnection != nil {
+			handler.wsconnection.Close()
+		}
+	}
+	defer t.logger.Info("Trigger Stopped")
 	return t.server.Stop()
 }
 
@@ -142,7 +153,7 @@ func replacePath(path string) string {
 	return strings.Replace(path, "{", ":", -1)
 }
 
-func newActionHandler(rt *Trigger, handler trigger.Handler, mode string) httprouter.Handle {
+func newActionHandler(rt *Trigger, handlerwrapper *HandlerWrapper, mode string) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		rt.logger.Infof("received incomming request")
 		out := &Output{
@@ -152,7 +163,7 @@ func newActionHandler(rt *Trigger, handler trigger.Handler, mode string) httprou
 		}
 
 		// populate other params
-		outconfigured, err := coerce.ToObject(handler.Schemas().Output)
+		outconfigured, err := coerce.ToObject(handlerwrapper.handler.Schemas().Output)
 		if err != nil {
 			rt.logger.Errorf("Unable to parse Output Object", err)
 			return
@@ -200,7 +211,8 @@ func newActionHandler(rt *Trigger, handler trigger.Handler, mode string) httprou
 			rt.logger.Errorf("upgrade error", err)
 			return
 		}
-		rt.wsconn = conn
+
+		handlerwrapper.wsconnection = conn
 		clientAdd := conn.RemoteAddr()
 		rt.logger.Infof("Upgraded to websocket protocol")
 		rt.logger.Infof("Remote address:", clientAdd)
@@ -213,17 +225,17 @@ func newActionHandler(rt *Trigger, handler trigger.Handler, mode string) httprou
 		switch mode {
 		case ModeMessage:
 			for {
-				_, message, err := rt.wsconn.ReadMessage()
+				_, message, err := conn.ReadMessage()
 				if err != nil {
 					rt.logger.Infof("error while reading websocket message: %s", err)
 					break
 				}
-				handlerRoutine(message, handler, out)
+				handlerRoutine(message, handlerwrapper.handler, out)
 			}
 			rt.logger.Infof("stopped listening to websocket endpoint")
 		case ModeConnection:
 			out.WSconnection = conn
-			_, err := handler.Handle(context.Background(), out)
+			_, err := handlerwrapper.handler.Handle(context.Background(), out)
 			if err != nil {
 				rt.logger.Errorf("Run action  failed [%s] ", err)
 			}
