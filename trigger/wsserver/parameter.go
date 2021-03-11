@@ -1,9 +1,9 @@
 package wsserver
 
 import (
-	//"encoding/json"
-	"github.com/tibco/wi-contrib/engine/conversion"
 	"strings"
+
+	"github.com/project-flogo/core/data/coerce"
 )
 
 type Parameter struct {
@@ -49,7 +49,7 @@ func ParseParams(paramSchema map[string]interface{}) ([]Parameter, error) {
 			} else if k1 == "items" {
 				param.Repeating = "true"
 				items := v1.(map[string]interface{})
-				s, err := conversion.ConvertToString(items["type"])
+				s, err := coerce.ToString(items["type"])
 				if err != nil {
 					return nil, err
 				}
