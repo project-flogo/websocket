@@ -28,7 +28,7 @@ func (i *Input) ToMap() map[string]interface{} {
 }
 
 // FromMap converts the values from a map to a struct
-func (i *Input) FromMap(values map[string]interface{}) error {
+func (i *Input) FromMap(values map[string]interface{})  (err error) {
 	i.Message = values["message"]
 	i.PathParams, err = coerce.ToParams(values["pathParams"])
 	if err != nil {

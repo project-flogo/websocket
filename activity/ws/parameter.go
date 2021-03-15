@@ -118,7 +118,7 @@ func (t *TypedValue) ToString(log log.Logger) string {
 	return ""
 }
 
-func GetParameter(context activity.Context, log log.Logger) (params *Parameters, err error) {
+func GetParameter(context activity.Context,input *Input, log log.Logger) (params *Parameters, err error) {
 	params = &Parameters{}
 	//Headers
 	log.Debug("Reading Request Header parameters")
@@ -134,7 +134,7 @@ func GetParameter(context activity.Context, log log.Logger) (params *Parameters,
 		}
 
 		if headers != nil {
-			inputHeaders := context.GetInput("headers").(map[string]interface{}) //input.Headers
+			inputHeaders := input.Headers //context.GetInput("headers").(map[string]interface{})
 			var typeValuesHeaders []*TypedValue
 			for _, hParam := range headers {
 				isRequired := hParam.Required
@@ -188,7 +188,7 @@ func GetParameter(context activity.Context, log log.Logger) (params *Parameters,
 		}
 
 		if queryParams != nil {
-			inputQueries := context.GetInput("queryParams").(map[string]interface{}) //input.QueryParams
+			inputQueries := input.QueryParams //context.GetInput("queryParams").(map[string]interface{})
 			var typeValuesQueries []*TypedValue
 			for _, qParam := range queryParams {
 				isRequired := qParam.Required
@@ -237,11 +237,11 @@ func GetParameter(context activity.Context, log log.Logger) (params *Parameters,
 			return params, err
 		}
 		if pathParams != nil {
-			inputPathParams := context.GetInput("pathParams").(map[string]interface{}) //input.PathParams
+			inputPathParams := input.PathParams //context.GetInput("pathParams").(map[string]interface{}) //
 			var typeValuesPath []*TypedValue
 			for _, pParam := range pathParams {
 				paramName := pParam.Name
-				if inputPathParams[paramName] == nil {
+				if inputPathParams[paramName] == "" {
 					return nil, fmt.Errorf("Required path parameter [%s] is not configured.", paramName)
 				}
 
