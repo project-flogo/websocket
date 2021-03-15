@@ -2,8 +2,8 @@ package ws
 
 import (
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
+	"github.com/pkg/errors"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -28,30 +28,13 @@ var activityMd = activity.ToMetadata(&Settings{}, &Input{}, &Output{})
 // New create a new websocket client
 func New(ctx activity.InitContext) (activity.Activity, error) {
 	s := &Settings{}
-	act := &Activity{}
-	if ctx.Settings()["format"] == nil {
-		err := metadata.MapToStruct(ctx.Settings(), s, true)
-		if err != nil {
-			return nil, err
-		}
-
-		connection, _, err := websocket.DefaultDialer.Dial(s.URI, nil)
-		if err != nil {
-			return nil, err
-		}
-
-		act = &Activity{
-			settings:   s,
-			connection: connection,
-			ossVersion: true,
-		}
-
-	} else {
-		act = &Activity{
-			initsettings:  ctx.Settings(),
-			cachedClients: sync.Map{},
-			ossVersion:    false,
-		}
+	err := metadata.MapToStruct(ctx.Settings(), s, true)
+	if err != nil {
+		return nil, err
+	}
+	act := &Activity{
+		settings:  s,
+		cachedClients: sync.Map{},
 	}
 	return act, nil
 }
@@ -59,10 +42,7 @@ func New(ctx activity.InitContext) (activity.Activity, error) {
 // Activity is an activity that is used to invoke a Web socket operation
 type Activity struct {
 	settings      *Settings
-	connection    *websocket.Conn
-	initsettings  map[string]interface{}
 	cachedClients sync.Map
-	ossVersion    bool
 }
 
 // Metadata returns the metadata for a websocket client
@@ -72,102 +52,72 @@ func (a *Activity) Metadata() *activity.Metadata {
 
 // Eval implements api.Activity.Eval - Invokes a web socket operation
 func (a *Activity) Eval(ctx activity.Context) (done bool, err error) {
-	if a.ossVersion {
-		input := &Input{}
-		ctx.GetInputObject(input)
-
-		var message []byte
-		if input.Message != nil {
-			if value, ok := input.Message.(string); ok {
-				message = []byte(value)
-			} else {
-				value, err := json.Marshal(input.Message)
-				if err != nil {
-					return false, err
-				}
-				message = value
-			}
-		}
-
-		err = a.connection.WriteMessage(websocket.TextMessage, message)
-		if err != nil {
-			return false, err
-		}
-
-		return true, nil
+	input := &Input{}
+	err = ctx.GetInputObject(input)
+	if err != nil {
+		return false, err
 	}
-
-	fmt.Println("******************In FE version")
-
-	fmt.Println("******************ctx", ctx)
-	// create connection
-	//var uri string
 	var isWSS bool
-	url := a.initsettings["uri"]
-	var urlstr string
+	url := a.settings.URI
 	if url != "" {
-		urlstr = url.(string) //fmt.Sprintf("%v", url)
-		isWSS = strings.HasPrefix(urlstr, "wss")
+		isWSS = strings.HasPrefix(url, "wss")
 	}
-
-	var dialer websocket.Dialer
-	if isWSS {
-		allowInsecure, err := coerce.ToBool(a.initsettings["allowInsecure"])
-		if err != nil { //TODO
-		}
-		if allowInsecure {
-			config := &tls.Config{InsecureSkipVerify: true}
-			dialer = websocket.Dialer{TLSClientConfig: config}
-		}
-	} else {
-		dialer = *websocket.DefaultDialer
-	}
-	parameters, err := GetParameter(ctx, ctx.Logger())
+	parameters, err := GetParameter(ctx, input, ctx.Logger())
 	if err != nil {
 		ctx.Logger().Error(err)
 		return false, err
 	}
-	fmt.Println("****************params", parameters)
 	//populate custom headers
 	h := getHeaders(ctx, parameters)
 	//populate url with path and query params
-	builtURL := buildURI(urlstr, parameters, ctx.Logger())
-	fmt.Println("***************builtURL", builtURL)
-	connection, res, err := dialer.Dial(builtURL, h)
-	if err != nil {
-		if res != nil {
-			defer res.Body.Close()
-			body, err := ioutil.ReadAll(res.Body)
-			fmt.Println("body is :", string(body), " err is: ", err)
-			ctx.Logger().Infof("res is  %s code is %v , err is %s", res.StatusCode, string(body), err)
-		}
-		return false, err
-	}
-
-	//populate msg
-	var message []byte
-	if ctx.GetInput("message") != nil {
-		if ctx.GetInput("format") != nil && ctx.GetInput("format") == "string" {
-			value, err := coerce.ToString(ctx.GetInput("message"))
-			if err != nil {
+	builtURL := buildURI(url, parameters, ctx.Logger())
+	key := ctx.ActivityHost().Name() + "-" + ctx.Name() + "-" + builtURL + "-" + fmt.Sprintf("%v", h)
+	cachedConnection, ok := a.cachedClients.Load(key)
+	var connection *websocket.Conn
+	if !ok{
+		var dialer websocket.Dialer
+		if isWSS {
+			allowInsecure := a.settings.AllowInsecure
+			if allowInsecure {
+				config := &tls.Config{InsecureSkipVerify: true}
+				dialer = websocket.Dialer{TLSClientConfig: config}
+			} else {
 				//TODO
 			}
-			message = []byte(value)
 		} else {
-			value, err := json.Marshal(ctx.GetInput("message"))
-			if err != nil {
-				return false, err
-			}
-			message = value
+			dialer = *websocket.DefaultDialer
 		}
-	}
-	fmt.Println(message)
-	//write to connection
-	err = connection.WriteMessage(websocket.TextMessage, message)
-	if err != nil {
-		return false, err
+		ctx.Logger().Info("Creating new connection")
+		conn, res, err := dialer.Dial(builtURL, h)
+		if err != nil {
+			if res != nil {
+				defer res.Body.Close()
+				body, err := ioutil.ReadAll(res.Body)
+				ctx.Logger().Infof("res code is %v payload is %s , err is %s", res.StatusCode, string(body), err)
+			}
+			return false, err
+		}
+		a.cachedClients.Store(key, conn)
+		connection = conn
+	}else{
+		ctx.Logger().Info("Reusing connection from cache")
+		connection = cachedConnection.(*websocket.Conn)
 	}
 
+
+	//populate msg
+	if input.Message != nil {
+		message, err := coerce.ToBytes(input.Message)
+		if err != nil {
+			return false, err
+		}
+		err = connection.WriteMessage(websocket.TextMessage, message)
+		if err != nil {
+			return false, err
+		}
+	} else {
+		return false, errors.New("Message is non configured")
+	}
 	return true, nil
 }
 
