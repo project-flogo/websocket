@@ -52,7 +52,7 @@ type Trigger struct {
 
 type HandlerWrapper struct {
 	handler      trigger.Handler
-	wsconnection *websocket.Conn
+	wsconnection map[*websocket.Conn]string
 }
 
 // New implements trigger.Factory.New
@@ -120,7 +120,7 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 		method := s.Method
 		path := s.Path
 		mode := s.Mode
-		tHandler := &HandlerWrapper{handler: handler}
+		tHandler := &HandlerWrapper{handler: handler, wsconnection: map[*websocket.Conn]string{}}
 		t.handlers = append(t.handlers, tHandler)
 		router.Handle(method, replacePath(path), newActionHandler(t, tHandler, mode))
 	}
@@ -141,7 +141,9 @@ func (t *Trigger) Stop() error {
 	t.logger.Info("Stopping Trigger")
 	for _, handler := range t.handlers {
 		if handler.wsconnection != nil {
-			handler.wsconnection.Close()
+			for conn, _ := range handler.wsconnection{
+				conn.Close()
+			}
 		}
 	}
 	defer t.logger.Info("Trigger Stopped")
@@ -212,7 +214,7 @@ func newActionHandler(rt *Trigger, handlerwrapper *HandlerWrapper, mode string) 
 			return
 		}
 
-		handlerwrapper.wsconnection = conn
+		handlerwrapper.wsconnection[conn]=""
 		clientAdd := conn.RemoteAddr()
 		rt.logger.Infof("Upgraded to websocket protocol")
 		rt.logger.Infof("Remote address:", clientAdd)
@@ -251,6 +253,7 @@ func handlerRoutine(message []byte, handler trigger.Handler, out *Output) error 
 		json.NewDecoder(bytes.NewBuffer(message)).Decode(&content)
 	} else {
 		content = string(message)
+
 	}
 	out.Content = content
 	_, err := handler.Handle(context.Background(), out)
