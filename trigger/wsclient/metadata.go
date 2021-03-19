@@ -3,6 +3,10 @@ package wsclient
 // Settings for the websocket client trigger
 type Settings struct {
 	URL string `md:"url,required"`
+	AllowInsecure bool   `md:"allowInsecure"`
+	CaCert        string `md:"caCert"`
+	QueryParams map[string]interface{} `md:"queryParams"`
+	Headers     map[string]interface{} `md:"headers"`
 }
 
 // Output is the outputs for the websocket trigger
