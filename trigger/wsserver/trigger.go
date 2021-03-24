@@ -126,7 +126,7 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 	}
 
 	t.logger.Debugf("Configured on port %d", t.settings.Port)
-	t.server = NewServer(addr, router, enableTLS, serverCert, serverKey, enableClientAuth, trustStore)
+	t.server = NewServer(addr, router, enableTLS, serverCert, serverKey, enableClientAuth, trustStore, t.logger)
 
 	return nil
 }
@@ -141,7 +141,7 @@ func (t *Trigger) Stop() error {
 	t.logger.Info("Stopping Trigger")
 	for _, handler := range t.handlers {
 		if handler.wsconnection != nil {
-			for conn, _ := range handler.wsconnection{
+			for conn, _ := range handler.wsconnection {
 				conn.Close()
 			}
 		}
@@ -214,7 +214,7 @@ func newActionHandler(rt *Trigger, handlerwrapper *HandlerWrapper, mode string) 
 			return
 		}
 
-		handlerwrapper.wsconnection[conn]=""
+		handlerwrapper.wsconnection[conn] = ""
 		clientAdd := conn.RemoteAddr()
 		rt.logger.Infof("Upgraded to websocket protocol")
 		rt.logger.Infof("Remote address:", clientAdd)

@@ -2,7 +2,6 @@ package wsserver
 
 import (
 	"strings"
-
 	"github.com/project-flogo/core/data/coerce"
 )
 

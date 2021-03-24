@@ -19,13 +19,11 @@ import (
 	"github.com/project-flogo/core/support/log"
 )
 
-var logger = log.ChildLogger(log.RootLogger(), "WSTrigger-Server")
-
 // Graceful shutdown HttpServer from: https://github.com/corneldamian/httpway/blob/master/server.go
 
 // NewServer create a new server instance
 //param server - is a instance of http.Server, can be nil and a default one will be created
-func NewServer(addr string, handler http.Handler, enableTLS bool, serverCert string, serverKey string, enableClientAuth bool, trustStore string) *Server {
+func NewServer(addr string, handler http.Handler, enableTLS bool, serverCert string, serverKey string, enableClientAuth bool, trustStore string, tlogger log.Logger) *Server {
 	srv := &Server{}
 	srv.Server = &http.Server{Addr: addr, Handler: handler}
 	srv.enableTLS = enableTLS
@@ -33,6 +31,7 @@ func NewServer(addr string, handler http.Handler, enableTLS bool, serverCert str
 	srv.serverKey = serverKey
 	srv.enableClientAuth = enableClientAuth
 	srv.trustStore = trustStore
+	srv.logger = tlogger
 	return srv
 }
 
@@ -50,6 +49,7 @@ type Server struct {
 	serverKey        string
 	enableClientAuth bool
 	trustStore       string
+	logger   log.Logger
 }
 
 // InstanceID the server instance id
@@ -78,15 +78,15 @@ func (s *Server) Start() error {
 
 	if s.enableTLS {
 		//TLS is enabled, load server certificate & key files
-		logger.Info("Reading certificates")
+		s.logger.Info("Reading certificates")
 		var cer tls.Certificate
 		if strings.HasPrefix(s.serverKey, "{") || strings.Contains(s.serverKey, ",") || strings.HasPrefix(s.serverKey, "-----") {
 			// certfile uploaded in FE via filepicker, or keys configured via app property in base64 encoded, or raw form
-			privateKey, err := decodeCerts(s.serverKey)
+			privateKey, err := decodeCerts(s.serverKey, s.logger)
 			if err != nil {
 				return err
 			}
-			caCertificate, err := decodeCerts(s.serverCert)
+			caCertificate, err := decodeCerts(s.serverCert, s.logger)
 			if err != nil {
 				return err
 			}
@@ -255,18 +255,18 @@ func getCerts(trustStore string) (*x509.CertPool, error) {
 	return certPool, nil
 }
 
-func decodeCerts(certVal string) ([]byte, error) {
+func decodeCerts(certVal string, tlogger log.Logger) ([]byte, error) {
 	if certVal == "" {
 		return nil, fmt.Errorf("Certificate is Empty")
 	}
 
 	//if certificate comes from fileselctor it will be base64 encoded
 	if strings.HasPrefix(certVal, "{") {
-		logger.Info("Certificate received from FileSelector")
+		tlogger.Info("Certificate received from FileSelector")
 		certObj, err := coerce.ToObject(certVal)
 		if err == nil {
 			certRealValue, ok := certObj["content"].(string)
-			logger.Info("Fetched Content from Certificate Object")
+			tlogger.Info("Fetched Content from Certificate Object")
 			if !ok || certRealValue == "" {
 				return nil, fmt.Errorf("Didn't found the certificate content")
 			}
@@ -286,7 +286,7 @@ func decodeCerts(certVal string) ([]byte, error) {
 
 	if index > -1 {
 		//some encoding is there
-		logger.Debug("Certificate received from App properties with encoding")
+		tlogger.Debug("Certificate received from App properties with encoding")
 		encoding := certVal[:index]
 		certRealValue := certVal[index+1:]
 
@@ -296,7 +296,7 @@ func decodeCerts(certVal string) ([]byte, error) {
 		return nil, fmt.Errorf("Error in parsing the certificates Or we may be not be supporting the given encoding")
 	}
 
-	logger.Debug("Certificate received from App properties without encoding")
+	tlogger.Debug("Certificate received from App properties without encoding")
 
 	//===========These blocks of code to be removed after sriharsha fixes FLOGO-2673=================================
 	first := strings.TrimSpace(certVal[:strings.Index(certVal, "----- ")] + "-----")
