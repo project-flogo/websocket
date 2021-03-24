@@ -12,25 +12,6 @@ import (
 	"github.com/project-flogo/core/support/log"
 )
 
-/**
-
-Support type for query and path param
-    "headers":
-        {
-            "Content_type": "Content-Type",
-            "UserName": "Tracy Li"
-        }
-    ,
-    "path_params":
-        {
-            "petID": 1101
-        }
-    ],
-    "query_params":
-        {
-            "count": 10
-        }
-*/
 
 type Parameters struct {
 	Headers        []*TypedValue `json:"headers"`
@@ -139,10 +120,10 @@ func GetParameter(context activity.Context,input *Input, log log.Logger) (params
 			for _, hParam := range headers {
 				isRequired := hParam.Required
 				paramName := hParam.Name
-				if isRequired == "true" && inputHeaders[paramName] == nil {
+				if isRequired == "true" && inputHeaders[paramName] == "" {
 					return nil, fmt.Errorf("Required header parameter [%s] is not configured.", paramName)
 				}
-				if inputHeaders[paramName] != nil {
+				if inputHeaders[paramName] != "" {
 					if hParam.Repeating == "true" {
 						val := inputHeaders[paramName]
 						switch reflect.TypeOf(val).Kind() {
@@ -193,11 +174,11 @@ func GetParameter(context activity.Context,input *Input, log log.Logger) (params
 			for _, qParam := range queryParams {
 				isRequired := qParam.Required
 				paramName := qParam.Name
-				if isRequired == "true" && inputQueries[paramName] == nil {
+				if isRequired == "true" && inputQueries[paramName] == "" {
 					return nil, fmt.Errorf("Required query parameter [%s] is not configured.", paramName)
 				}
 
-				if inputQueries[paramName] != nil {
+				if inputQueries[paramName] != "" {
 					if qParam.Repeating == "true" {
 						val := inputQueries[paramName]
 						switch reflect.TypeOf(val).Kind() {
@@ -255,26 +236,6 @@ func GetParameter(context activity.Context,input *Input, log log.Logger) (params
 			}
 		}
 	}
-
-	/*requestType := input.RequestType
-	if requestType == "" {
-		requestType = "application/json"
-	}
-
-	responseType, _ := coerce.ToString(context.(*instance.TaskInst).Task().ActivityConfig().GetOutput("responseType"))
-	if responseType == "" {
-		responseType = "application/json"
-	}
-
-	responseOutput, _ := coerce.ToString(context.(*instance.TaskInst).Task().ActivityConfig().GetOutput("responseOutput"))
-	if responseOutput == "" {
-		responseOutput = "application/json"
-	}
-
-	//params.RequestType = requestType
-	params.ResponseType = responseType
-	params.ResponseOutput = responseOutput*/
-
 	return params, err
 }
 
