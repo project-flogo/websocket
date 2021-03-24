@@ -83,7 +83,7 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 	var dialer websocket.Dialer
 	if isWSS {
 		tlsconfig := &tls.Config{}
-		allowInsecure := t.settings.AllowInsecure //t.config.Settings["allowInsecure"].(bool)
+		allowInsecure := t.settings.AllowInsecure
 		if allowInsecure {
 			tlsconfig.InsecureSkipVerify = true
 		} else {
@@ -120,7 +120,10 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 	if err != nil {
 		if res != nil {
 			defer res.Body.Close()
-			body, err := ioutil.ReadAll(res.Body)
+			body, err1 := ioutil.ReadAll(res.Body)
+			if err1 != nil{
+				ctx.Logger().Infof("res code is %v error while reading response payload is %s ", res.StatusCode,  err1)
+			}
 			t.logger.Infof("res code is %v payload is %s , err is %s", res.StatusCode, string(body), err)
 		}
 		return fmt.Errorf("error while connecting to websocket endpoint[%s] - %s", urlstring, err)

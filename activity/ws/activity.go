@@ -6,21 +6,18 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/pkg/errors"
-	"io/ioutil"
-	"net/http"
-	"net/url"
-	"os"
-
-	//"net/url"
-	"strings"
-	"sync"
-
 	"github.com/gorilla/websocket"
+	"github.com/pkg/errors"
 	"github.com/project-flogo/core/activity"
 	"github.com/project-flogo/core/data/coerce"
 	"github.com/project-flogo/core/data/metadata"
 	"github.com/project-flogo/core/support/log"
+	"io/ioutil"
+	"net/http"
+	"net/url"
+	"os"
+	"strings"
+	"sync"
 )
 
 func init() {
@@ -86,18 +83,17 @@ func (a *Activity) Eval(ctx activity.Context) (done bool, err error) {
 			if allowInsecure {
 				tlsconfig.InsecureSkipVerify = true
 			} else {
-				// identify if OSS
 				var cacertObj map[string]interface{}
 				if a.settings.CaCert != "" {
 					err = json.Unmarshal([]byte(a.settings.CaCert), &cacertObj)
-					if err != nil { //OSS way
+					if err != nil { //file path configured
 						certPool, err := getCerts(a.settings.CaCert)
 						if err != nil {
 							fmt.Printf("Error while loading client trust store - %v", err)
 							return false, err
 						}
 						tlsconfig.RootCAs = certPool
-					} else { // flogo way
+					} else { // file content configured
 						rootCAbytes, err := decodeCerts(a.settings.CaCert, ctx.Logger())
 						if err != nil {
 							ctx.Logger().Error(err)
@@ -118,7 +114,10 @@ func (a *Activity) Eval(ctx activity.Context) (done bool, err error) {
 		if err != nil {
 			if res != nil {
 				defer res.Body.Close()
-				body, err := ioutil.ReadAll(res.Body)
+				body, err1 := ioutil.ReadAll(res.Body)
+				if err1 != nil{
+					ctx.Logger().Infof("res code is %v error while reading response payload is %s ", res.StatusCode,  err1)
+				}
 				ctx.Logger().Infof("res code is %v payload is %s , err is %s", res.StatusCode, string(body), err)
 			}
 			return false, err
@@ -227,13 +226,11 @@ func decodeCerts(certVal string, log log.Logger) ([]byte, error) {
 
 	log.Debugf("Certificate received from App properties without encoding")
 
-	//===========These blocks of code to be removed after sriharsha fixes FLOGO-2673=================================
 	first := strings.TrimSpace(certVal[:strings.Index(certVal, "----- ")] + "-----")
 	middle := strings.TrimSpace(certVal[strings.Index(certVal, "----- ")+5 : strings.Index(certVal, " -----")])
 	strings.Replace(middle, " ", "\n", -1)
 	last := strings.TrimSpace(certVal[strings.Index(certVal, " -----"):])
 	certVal = first + "\n" + middle + "\n" + last
-	//===========These blocks of code to be removed after sriharsha fixes FLOGO-2673=================================
 
 	return []byte(certVal), nil
 }
