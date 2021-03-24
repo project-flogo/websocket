@@ -7,16 +7,18 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/websocket"
-	"github.com/project-flogo/core/action"
-	"github.com/project-flogo/core/data/coerce"
-	"github.com/project-flogo/core/support/log"
-	"github.com/project-flogo/core/trigger"
+	"github.com/project-flogo/core/data/metadata"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+
+	"github.com/gorilla/websocket"
+	"github.com/project-flogo/core/action"
+	"github.com/project-flogo/core/data/coerce"
+	"github.com/project-flogo/core/support/log"
+	"github.com/project-flogo/core/trigger"
 )
 
 var triggerMd = trigger.NewMetadata(&Settings{}, &Output{})
@@ -46,57 +48,34 @@ type Trigger struct {
 // New implements trigger.Factory.New
 func (*Factory) New(config *trigger.Config) (trigger.Trigger, error) {
 	s := &Settings{}
-	/*err := metadata.MapToStruct(config.Settings, s, true)
+	err := metadata.MapToStruct(config.Settings, s, true)
 	if err != nil {
 		return nil, err
-	}*/
-
+	}
 	return &Trigger{settings: s, config: config}, nil
 }
 
 // Initialize initializes the trigger
 func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 	t.logger = ctx.Logger()
-	urlstring, err := coerce.ToString(t.config.Settings["url"])
+	headers := t.settings.Headers
+	queryParams := t.settings.QueryParams
+	urlstring := t.settings.URL
 	// populate headers
 	header := make(http.Header)
-	headerObject, err := coerce.ToObject(t.config.Settings["headers"])
-	if err != nil {
-		// queryparam is array as per FE
-		headerArray, err := coerce.ToArray(t.config.Settings["headers"])
-		if err != nil {
-			return err
+	if len(headers) > 0 {
+		for key, val := range headers {
+			header[key] = []string{val}
 		}
-		for _, val := range headerArray {
-			qparamMap := val.(map[string]interface{})
-			header[qparamMap["parameterName"].(string)] = []string{qparamMap["value"].(string)}
-		}
-	} else {
-		fmt.Println(headerObject)
-		// OSS way
-		//TODO
 	}
-
 	// populate queryparam
-	qparamObject, err := coerce.ToObject(t.config.Settings["queryParams"])
-	if err != nil {
-		// queryparam is array as per FE
-		qparamArray, err := coerce.ToArray(t.config.Settings["queryParams"])
-		if err != nil {
-			return err
-		}
+	if len(queryParams) > 0 {
 		qp := url.Values{}
-		for _, val := range qparamArray {
-			qparamMap := val.(map[string]interface{})
-			qp.Add(qparamMap["parameterName"].(string), qparamMap["value"].(string))
+		for key, val := range queryParams {
+			qp.Add(key, val)
 		}
 		urlstring = urlstring + "?" + qp.Encode()
-	} else {
-		//OSS way
-		fmt.Println(qparamObject)
-		//TODO
 	}
-
 	var isWSS bool
 	if urlstring != "" {
 		isWSS = strings.HasPrefix(urlstring, "wss")
@@ -104,25 +83,25 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 	var dialer websocket.Dialer
 	if isWSS {
 		tlsconfig := &tls.Config{}
-		allowInsecure := t.config.Settings["queryParams"].(bool)
+		allowInsecure := t.settings.AllowInsecure //t.config.Settings["allowInsecure"].(bool)
 		if allowInsecure {
 			tlsconfig.InsecureSkipVerify = true
 		} else {
-			// identify if OSS
+			caCertValue := t.settings.CaCert
 			var cacertObj map[string]interface{}
-			if t.config.Settings["caCert"].(string) != "" {
-				err = json.Unmarshal([]byte(t.config.Settings["caCert"].(string)), &cacertObj)
-				if err != nil { //OSS way
-					certPool, err := getCerts(a.settings.CaCert)
+			if caCertValue != "" {
+				err := json.Unmarshal([]byte(caCertValue), &cacertObj)
+				if err != nil { // filepath configured
+					certPool, err := getCerts(caCertValue)
 					if err != nil {
-						fmt.Printf("Error while loading client trust store - %v", err)
+						t.logger.Infof("Error while loading client trust store - %v", err)
 						return err
 					}
 					tlsconfig.RootCAs = certPool
-				} else { // flogo way
-					rootCAbytes, err := decodeCerts(a.settings.CaCert, ctx.Logger())
+				} else { // file content configured
+					rootCAbytes, err := decodeCerts(caCertValue, t.logger)
 					if err != nil {
-						ctx.Logger().Error(err)
+						t.logger.Error(err)
 						return err
 					}
 					certPool := x509.NewCertPool()
@@ -136,19 +115,26 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 		dialer = *websocket.DefaultDialer
 	}
 
-	t.logger.Infof("dialing websocket endpoint[%s]...", urlstring)
+	t.logger.Debugf("dialing websocket endpoint[%s] with headers[%s]...", urlstring, header)
 	conn, res, err := dialer.Dial(urlstring, header)
 	if err != nil {
 		if res != nil {
 			defer res.Body.Close()
 			body, err := ioutil.ReadAll(res.Body)
-			ctx.Logger().Infof("res code is %v payload is %s , err is %s", res.StatusCode, string(body), err)
+			t.logger.Infof("res code is %v payload is %s , err is %s", res.StatusCode, string(body), err)
 		}
 		return fmt.Errorf("error while connecting to websocket endpoint[%s] - %s", urlstring, err)
 	}
 
 	t.wsconn = conn
 	go func() {
+		defer func(){
+			err := conn.WriteMessage(websocket.CloseMessage, []byte("Sending close message while getting out of reading connection loop"))
+			if err != nil{
+				t.logger.Debugf("Received err [%s] while writing close message", err)
+			}
+			conn.Close()
+		}()
 		for {
 			_, message, err := conn.ReadMessage()
 			t.logger.Infof("Message received :", string(message))
@@ -178,6 +164,10 @@ func (t *Trigger) Start() error {
 
 // Stop stops the trigger
 func (t *Trigger) Stop() error {
+	err := t.wsconn.WriteMessage(websocket.CloseMessage, []byte("Closing connection while stopping trigger"))
+	if err != nil{
+		t.logger.Infof("Error received: [%s] while sending close message when Stopping Trigger", err)
+	}
 	t.wsconn.Close()
 	return nil
 }

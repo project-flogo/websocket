@@ -5,8 +5,8 @@ type Settings struct {
 	URL string `md:"url,required"`
 	AllowInsecure bool   `md:"allowInsecure"`
 	CaCert        string `md:"caCert"`
-	QueryParams map[string]interface{} `md:"queryParams"`
-	Headers     map[string]interface{} `md:"headers"`
+	QueryParams map[string]string `md:"queryParams"`
+	Headers     map[string]string `md:"headers"`
 }
 
 // Output is the outputs for the websocket trigger
