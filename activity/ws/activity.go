@@ -116,9 +116,9 @@ func (a *Activity) Eval(ctx activity.Context) (done bool, err error) {
 				defer res.Body.Close()
 				body, err1 := ioutil.ReadAll(res.Body)
 				if err1 != nil{
-					ctx.Logger().Infof("res code is %v error while reading response payload is %s ", res.StatusCode,  err1)
+					ctx.Logger().Errorf("res code is %v error while reading response payload is %s ", res.StatusCode,  err1)
 				}
-				ctx.Logger().Infof("res code is %v payload is %s , err is %s", res.StatusCode, string(body), err)
+				ctx.Logger().Errorf("res code is %v payload is %s , err is %s", res.StatusCode, string(body), err)
 			}
 			return false, err
 		}

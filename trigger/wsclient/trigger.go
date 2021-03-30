@@ -95,14 +95,14 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 				if err != nil { // filepath configured
 					certPool, err := getCerts(caCertValue)
 					if err != nil {
-						t.logger.Infof("Error while loading client trust store - %v", err)
+						t.logger.Errorf("Error while loading client trust store - %v", err)
 						return err
 					}
 					tlsconfig.RootCAs = certPool
 				} else { // file content configured
 					rootCAbytes, err := decodeCerts(caCertValue, t.logger)
 					if err != nil {
-						t.logger.Error(err)
+						t.logger.Errorf("Error while loading client trust store content - %v", err)
 						return err
 					}
 					certPool := x509.NewCertPool()
@@ -123,9 +123,9 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 			defer res.Body.Close()
 			body, err1 := ioutil.ReadAll(res.Body)
 			if err1 != nil{
-				ctx.Logger().Infof("res code is %v error while reading response payload is %s ", res.StatusCode,  err1)
+				ctx.Logger().Errorf("res code is %v error while reading response payload is %s ", res.StatusCode,  err1)
 			}
-			t.logger.Infof("res code is %v payload is %s , err is %s", res.StatusCode, string(body), err)
+			t.logger.Errorf("res code is %v payload is %s , err is %s", res.StatusCode, string(body), err)
 		}
 		return fmt.Errorf("error while connecting to websocket endpoint[%s] - %s", urlstring, err)
 	}
@@ -135,13 +135,13 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 		defer func(){
 			err := conn.WriteMessage(websocket.CloseMessage, []byte("Sending close message while getting out of reading connection loop"))
 			if err != nil{
-				t.logger.Debugf("Received err [%s] while writing close message", err)
+				t.logger.Warnf("Received err [%s] while writing close message", err)
 			}
 			conn.Close()
 		}()
 		for {
 			_, message, err := conn.ReadMessage()
-			t.logger.Infof("Message received :", string(message))
+			t.logger.Infof("Message received :", string(message)) //TODO REMOVE
 			if err != nil {
 				t.logger.Errorf("error while reading websocket message: %s", err)
 				break
@@ -176,7 +176,7 @@ func (t *Trigger) Start() error {
 func (t *Trigger) Stop() error {
 	err := t.wsconn.WriteMessage(websocket.CloseMessage, []byte("Closing connection while stopping trigger"))
 	if err != nil{
-		t.logger.Infof("Error received: [%s] while sending close message when Stopping Trigger", err)
+		t.logger.Warnf("Error received: [%s] while sending close message when Stopping Trigger", err)
 	}
 	t.wsconn.Close()
 	return nil
