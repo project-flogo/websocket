@@ -89,14 +89,14 @@ func (a *Activity) Eval(ctx activity.Context) (done bool, err error) {
 					if err != nil { //file path configured
 						certPool, err := getCerts(a.settings.CaCert)
 						if err != nil {
-							fmt.Printf("Error while loading client trust store - %v", err)
+							ctx.Logger().Errorf("Error while loading client trust store - %v", err)
 							return false, err
 						}
 						tlsconfig.RootCAs = certPool
 					} else { // file content configured
 						rootCAbytes, err := decodeCerts(a.settings.CaCert, ctx.Logger())
 						if err != nil {
-							ctx.Logger().Error(err)
+							ctx.Logger().Errorf("Error while loading client trust store content - %v", err)
 							return false, err
 						}
 						certPool := x509.NewCertPool()
