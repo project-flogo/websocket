@@ -1,6 +1,7 @@
 package wsclient
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -148,10 +149,16 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 
 			for _, handler := range ctx.GetHandlers() {
 				out := &Output{}
-				out.Content = message
-				_, err := handler.Handle(context.Background(), out)
-				if err != nil {
-					t.logger.Errorf("Run action  failed [%s] ", err)
+				var content interface{}
+				if handler.Schemas() == nil {// string type
+					content = string(message)
+				}else{
+					json.NewDecoder(bytes.NewBuffer(message)).Decode(&content)
+				}
+				out.Content = content
+				_, err1 := handler.Handle(context.Background(), out)
+				if err1 != nil {
+					t.logger.Errorf("Run action  failed [%s] ", err1)
 				}
 			}
 		}
