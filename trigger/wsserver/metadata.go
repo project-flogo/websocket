@@ -15,8 +15,8 @@ type Settings struct {
 // Output are the outputs of the websocket server
 type Output struct {
 	PathParams   map[string]string `md:"pathParams"`
-	QueryParams  map[string]string `md:"queryParams"`
-	Headers      map[string]string `md:"headers"`
+	QueryParams  map[string]interface{} `md:"queryParams"`
+	Headers      map[string]interface{} `md:"headers"`
 	Content      interface{}       `md:"content"`
 	WSconnection interface{}       `md:"wsconnection"`
 }
@@ -38,12 +38,12 @@ func (o *Output) FromMap(values map[string]interface{}) (err error) {
 	if err != nil {
 		return err
 	}
-	o.QueryParams, err = coerce.ToParams(values["queryParams"])
+	o.QueryParams, err = coerce.ToObject(values["queryParams"])
 	if err != nil {
 		return err
 	}
 	o.Content = values["content"]
-	o.Headers, err = coerce.ToParams(values["headers"])
+	o.Headers, err = coerce.ToObject(values["headers"])
 	if err != nil {
 		return err
 	}

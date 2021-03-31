@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"
 	"github.com/project-flogo/core/action"
+	"github.com/project-flogo/core/data/coerce"
 	"github.com/project-flogo/core/data/metadata"
 	"github.com/project-flogo/core/support/log"
 	"github.com/project-flogo/core/trigger"
@@ -20,9 +23,9 @@ var triggerMd = trigger.NewMetadata(&Settings{}, &Output{}, &HandlerSettings{})
 
 const (
 	// ModeMessage sends messages to the action
-	ModeMessage = "1"
+	ModeMessage = "Data"
 	// ModeConnection sends connections to the action
-	ModeConnection = "2"
+	ModeConnection = "Connection"
 )
 
 func init() {
@@ -42,9 +45,14 @@ func (*Factory) Metadata() *trigger.Metadata {
 type Trigger struct {
 	server   *Server
 	runner   action.Runner
-	wsconn   *websocket.Conn
+	handlers []*HandlerWrapper
 	settings *Settings
 	logger   log.Logger
+}
+
+type HandlerWrapper struct {
+	handler      trigger.Handler
+	wsconnection map[*websocket.Conn]string
 }
 
 // New implements trigger.Factory.New
@@ -103,7 +111,6 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 
 	// Init handlers
 	for _, handler := range ctx.GetHandlers() {
-
 		s := &HandlerSettings{}
 		err := metadata.MapToStruct(handler.Settings(), s, true)
 		if err != nil {
@@ -113,12 +120,13 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 		method := s.Method
 		path := s.Path
 		mode := s.Mode
-
-		router.Handle(method, path, newActionHandler(t, handler, mode))
+		tHandler := &HandlerWrapper{handler: handler, wsconnection: map[*websocket.Conn]string{}}
+		t.handlers = append(t.handlers, tHandler)
+		router.Handle(method, replacePath(path), newActionHandler(t, tHandler, mode))
 	}
 
 	t.logger.Debugf("Configured on port %d", t.settings.Port)
-	t.server = NewServer(addr, router, enableTLS, serverCert, serverKey, enableClientAuth, trustStore)
+	t.server = NewServer(addr, router, enableTLS, serverCert, serverKey, enableClientAuth, trustStore, t.logger)
 
 	return nil
 }
@@ -130,46 +138,106 @@ func (t *Trigger) Start() error {
 
 // Stop stops the trigger
 func (t *Trigger) Stop() error {
-	t.wsconn.Close()
+	t.logger.Info("Stopping Trigger")
+	for _, handler := range t.handlers {
+		if handler.wsconnection != nil {
+			for conn, _ := range handler.wsconnection {
+				conn.Close()
+			}
+		}
+	}
+	defer t.logger.Info("Trigger Stopped")
 	return t.server.Stop()
 }
 
-func newActionHandler(rt *Trigger, handler trigger.Handler, mode string) httprouter.Handle {
+func replacePath(path string) string {
+	path = strings.Replace(path, "}", "", -1)
+	return strings.Replace(path, "{", ":", -1)
+}
+
+func newActionHandler(rt *Trigger, handlerwrapper *HandlerWrapper, mode string) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		rt.logger.Infof("received incomming request")
+		out := &Output{
+			QueryParams: make(map[string]interface{}),
+			PathParams:  make(map[string]string),
+			Headers:     make(map[string]interface{}),
+		}
 
+		// populate other params
+		outconfigured, err := coerce.ToObject(handlerwrapper.handler.Schemas().Output)
+		if err != nil {
+			rt.logger.Errorf("Unable to parse Output Object", err)
+			return
+		}
+
+		//PathParams
+		if len(ps) > 0 {
+			pathParamMetadata, _ := outconfigured["pathParams"]
+			if pathParamMetadata != nil {
+				resultWithPathparams, err := ParseOutputPathParams(pathParamMetadata, ps, rt)
+				if err != nil {
+					rt.logger.Info("Unable to parse Path Params: ", err)
+					//return
+				} else if resultWithPathparams != nil {
+					out.PathParams = resultWithPathparams
+				}
+			}
+		}
+		//QueryParams
+		queryParamMetadata, _ := outconfigured["queryParams"]
+		if queryParamMetadata != nil {
+			resultWithQueryparams, err := ParseOutputQueryParams(queryParamMetadata, r, w, rt)
+			if err != nil {
+				return
+			} else if resultWithQueryparams != nil {
+				out.QueryParams = resultWithQueryparams
+			}
+		}
+		//Headers
+		headerMetadata, _ := outconfigured["headers"]
+		if headerMetadata != nil {
+			resultWithHeaders, err := ParseOutputHeaders(headerMetadata, r, w, rt)
+			if err != nil {
+				//rt.logger.Info("Unable to parse Headers: ", err)
+				return
+			} else if resultWithHeaders != nil {
+				out.Headers = resultWithHeaders
+			}
+		}
+
+		// upgrade conn
 		upgrader := websocket.Upgrader{}
 		conn, err := upgrader.Upgrade(w, r, nil)
-		rt.wsconn = conn
 		if err != nil {
 			rt.logger.Errorf("upgrade error", err)
 			return
 		}
 
-		//upgraded to websocket connection
+		handlerwrapper.wsconnection[conn] = ""
 		clientAdd := conn.RemoteAddr()
 		rt.logger.Infof("Upgraded to websocket protocol")
 		rt.logger.Infof("Remote address:", clientAdd)
+
+		// params
+		defer func() {
+			rt.logger.Info("Closing connection while going out of trigger handler")
+			conn.Close()
+		}()
 		switch mode {
 		case ModeMessage:
-			defer conn.Close()
 			for {
-				_, message, err := rt.wsconn.ReadMessage()
+				_, message, err := conn.ReadMessage()
 				if err != nil {
 					rt.logger.Infof("error while reading websocket message: %s", err)
 					break
 				}
-				handlerRoutine(message, handler)
+				handlerRoutine(message, handlerwrapper.handler, out)
 			}
 			rt.logger.Infof("stopped listening to websocket endpoint")
 		case ModeConnection:
-			out := &Output{
-				QueryParams:  make(map[string]string),
-				PathParams:   make(map[string]string),
-				Headers:      make(map[string]string),
-				WSconnection: conn,
-			}
-			_, err := handler.Handle(context.Background(), out)
+			out.WSconnection = conn
+			_, err := handlerwrapper.handler.Handle(context.Background(), out)
 			if err != nil {
 				rt.logger.Errorf("Run action  failed [%s] ", err)
 			}
@@ -178,14 +246,253 @@ func newActionHandler(rt *Trigger, handler trigger.Handler, mode string) httprou
 	}
 }
 
-func handlerRoutine(message []byte, handler trigger.Handler) error {
+func handlerRoutine(message []byte, handler trigger.Handler, out *Output) error {
 	var content interface{}
-	json.NewDecoder(bytes.NewBuffer(message)).Decode(&content)
-	out := &Output{}
+	if (handler.Settings()["format"] != nil && handler.Settings()["format"].(string) == "JSON") ||
+		(handler.Settings()["format"] == nil && isJSON(message)) {
+		json.NewDecoder(bytes.NewBuffer(message)).Decode(&content)
+	} else {
+		content = string(message)
+
+	}
 	out.Content = content
 	_, err := handler.Handle(context.Background(), out)
 	if err != nil {
 		return fmt.Errorf("Run action  failed [%s] ", err)
 	}
 	return nil
+}
+
+func isJSON(str []byte) bool {
+	var js json.RawMessage
+	return json.Unmarshal(str, &js) == nil
+}
+func getValuewithType(param Parameter, sv []string) ([]interface{}, error) {
+	var values []interface{}
+	switch param.Type { // json schema data type
+	case "number":
+		if param.Repeating == "false" {
+			v, err := strconv.ParseFloat(sv[0], 64)
+			if err != nil {
+				return nil, fmt.Errorf("value %s is not a %s type", sv[0], param.Type)
+			}
+			values = append(values, v)
+		} else {
+			for _, item := range sv {
+				v, err := strconv.ParseFloat(item, 64)
+				if err != nil {
+					return nil, fmt.Errorf("value %s is not a %s type", item, param.Type)
+				}
+				values = append(values, v)
+			}
+		}
+
+	case "integer":
+		if param.Repeating == "false" {
+			v, err := strconv.ParseInt(sv[0], 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("value %s is not a %s type", sv[0], param.Type)
+			}
+			values = append(values, v)
+		} else {
+			for _, item := range sv {
+				v, err := strconv.ParseInt(item, 10, 64)
+				if err != nil {
+					return nil, fmt.Errorf("value %s is not a %s type", item, param.Type)
+				}
+				values = append(values, v)
+			}
+		}
+
+	case "boolean":
+		if param.Repeating == "false" {
+			v, err := strconv.ParseBool(sv[0])
+			if err != nil {
+				return nil, fmt.Errorf("value %s is not a %s type", sv[0], param.Type)
+			}
+			values = append(values, v)
+
+		} else {
+			for _, item := range sv {
+				v, err := strconv.ParseBool(item)
+				if err != nil {
+					return nil, fmt.Errorf("value %s is not a %s type", item, param.Type)
+				}
+				values = append(values, v)
+			}
+		}
+	case "string":
+		if param.Repeating == "false" {
+			v, err := coerce.ToString(sv[0])
+			if err != nil {
+				return nil, err
+			}
+			values = append(values, v)
+
+		} else {
+			for _, item := range sv {
+				v, err := coerce.ToString(item)
+				if err != nil {
+					return nil, err
+				}
+				values = append(values, v)
+			}
+		}
+	}
+	return values, nil
+}
+
+func ParseTillValue(outputJsonData interface{}) (map[string]interface{}, error) {
+	casted, err := coerce.ToObject(outputJsonData)
+	if err != nil {
+		return nil, err
+	}
+	castedValue := casted["value"]
+	if castedValue != nil {
+		sec, err := coerce.ToObject(castedValue)
+		if err != nil {
+			return nil, err
+		}
+		return sec, nil
+	}
+	return nil, nil
+}
+func ParseOutputPathParams(outputJsonData interface{}, ps httprouter.Params, rt *Trigger) (map[string]string, error) {
+	/*for key, val := range outputJsonData.(map[string]interface{}){
+		fmt.Println("*****key is :", key, " *****value is : ", val)
+	}*/
+	sec, err := ParseTillValue(outputJsonData)
+	if err != nil {
+		rt.logger.Info("Unable to convert table value data to object", err)
+		return nil, nil
+	}
+	if sec != nil {
+		definePathParam, _ := ParseParams(sec)
+		fmt.Println("definePathParam is : ", definePathParam)
+		if definePathParam != nil {
+			pathParams := make(map[string]string)
+			for _, qParam := range definePathParam {
+				if ps.ByName(qParam.Name) == "" && strings.EqualFold(qParam.Required, "true") {
+					errMsg := fmt.Sprintf("Required path parameter [%s] is not set", qParam.Name)
+					rt.logger.Info(errMsg)
+					//rt.logger.Error(errMsg)
+					return nil, nil
+				}
+				if ps.ByName(qParam.Name) != "" {
+					values, err := getValuewithType(qParam, []string{ps.ByName(qParam.Name)})
+					if err != nil {
+						errMsg := fmt.Sprintf("Fail to validate path parameter: %v", err)
+						rt.logger.Info(errMsg)
+						//rt.logger.Error(errMsg)
+						return nil, nil
+					}
+					pathParams[qParam.Name] = values[0].(string)
+				}
+			}
+			return pathParams, nil
+		}
+	}
+	return nil, nil
+}
+
+func ParseOutputQueryParams(outputJsonData interface{}, r *http.Request, w http.ResponseWriter, rt *Trigger) (map[string]interface{}, error) {
+	/*for key, val := range outputJsonData.(map[string]interface{}){
+		fmt.Println("*****query params key is :", key, " *****value is : ", val)
+	}*/
+	sec, err := ParseTillValue(outputJsonData)
+	if err != nil {
+		rt.logger.Info("Unable to convert table value data to object", err)
+		return nil, nil
+	}
+	if sec != nil {
+		definedQueryParams, _ := ParseParams(sec)
+		if definedQueryParams != nil {
+			queryValues := r.URL.Query()
+			queryParams := make(map[string]interface{}, len(definedQueryParams))
+			for _, qParam := range definedQueryParams {
+				value := queryValues[qParam.Name]
+				if !notEmpty(value) && strings.EqualFold(qParam.Required, "true") {
+					errMsg := fmt.Sprintf("Required query parameter [%s] is not set", qParam.Name)
+					rt.logger.Info(errMsg)
+					http.Error(w, errMsg, http.StatusBadRequest)
+					return nil, errors.New(errMsg)
+				}
+
+				if notEmpty(value) {
+					values, err := getValuewithType(qParam, value)
+					if err != nil {
+						errMsg := fmt.Sprintf("Fail to validate query parameter: %v", err)
+						rt.logger.Info(errMsg)
+						http.Error(w, errMsg, http.StatusBadRequest)
+						return nil, errors.New(errMsg)
+					}
+					if qParam.Repeating == "false" {
+						queryParams[qParam.Name] = values[0]
+					} else {
+						queryParams[qParam.Name] = values
+					}
+					//rt.logger.Debugf("Query param: Name[%s], Value[%s]", qParam.Name, queryParams[qParam.Name])
+				}
+			}
+			return queryParams, nil
+		}
+	}
+	return nil, nil
+}
+
+func ParseOutputHeaders(outputJsonData interface{}, r *http.Request, w http.ResponseWriter, rt *Trigger) (map[string]interface{}, error) {
+	sec, err := ParseTillValue(outputJsonData)
+	if err != nil {
+		rt.logger.Info("Unable to convert table value data to object", err)
+		return nil, nil
+	}
+	if sec != nil {
+		definedHeaderParams, _ := ParseParams(sec)
+		if definedHeaderParams != nil {
+			headers := make(map[string]interface{}, len(definedHeaderParams))
+			headerValues := r.Header
+			fmt.Println("&&&&&&&&&&& header values: ", headerValues)
+			rt.logger.Debug(headerValues)
+			for _, hParam := range definedHeaderParams {
+				value := headerValues[http.CanonicalHeaderKey(hParam.Name)]
+				if len(value) == 0 && hParam.Required == "true" {
+					errMsg := fmt.Sprintf("Required header [%s] is not set", hParam.Name)
+					rt.logger.Info(errMsg)
+					http.Error(w, errMsg, http.StatusBadRequest)
+					return nil, errors.New(errMsg)
+				}
+				if len(value) > 0 {
+					values, err := getValuewithType(hParam, value)
+					if err != nil {
+						errMsg := fmt.Sprintf("Fail to validate header parameter: %v", err)
+						rt.logger.Info(errMsg)
+						http.Error(w, errMsg, http.StatusBadRequest)
+						return nil, errors.New(errMsg)
+					}
+					if hParam.Repeating == "false" {
+						headers[hParam.Name] = values[0]
+					} else {
+						headers[hParam.Name] = values
+					}
+					//rt.logger.Debugf("Header: Name[%s], Value[%s]", hParam.Name, headers[hParam.Name])
+				}
+			}
+			return headers, nil
+		}
+	}
+	return nil, nil
+}
+
+func notEmpty(array []string) bool {
+	if len(array) > 0 {
+		if len(array) == 1 {
+			if array[0] != "" && len(array[0]) > 0 {
+				return true
+			}
+			return false
+		} else {
+			return true
+		}
+	}
+	return false
 }
