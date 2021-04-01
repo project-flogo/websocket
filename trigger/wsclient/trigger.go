@@ -122,8 +122,8 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 		if res != nil {
 			defer res.Body.Close()
 			body, err1 := ioutil.ReadAll(res.Body)
-			if err1 != nil{
-				ctx.Logger().Errorf("res code is %v error while reading response payload is %s ", res.StatusCode,  err1)
+			if err1 != nil {
+				ctx.Logger().Errorf("res code is %v error while reading response payload is %s ", res.StatusCode, err1)
 			}
 			t.logger.Errorf("res code is %v payload is %s , err is %s", res.StatusCode, string(body), err)
 		}
@@ -132,30 +132,37 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 
 	t.wsconn = conn
 	go func() {
-		defer func(){
+		defer func() {
 			err := conn.WriteMessage(websocket.CloseMessage, []byte("Sending close message while getting out of reading connection loop"))
-			if err != nil{
+			if err != nil {
 				t.logger.Warnf("Received err [%s] while writing close message", err)
 			}
 			conn.Close()
 		}()
 		for {
 			_, message, err := conn.ReadMessage()
-			t.logger.Infof("Message received :", string(message)) //TODO REMOVE
+			//t.logger.Infof("Message received :", string(message)) //TODO REMOVE
 			if err != nil {
 				t.logger.Errorf("error while reading websocket message: %s", err)
 				break
 			}
 
-			for _, handler := range ctx.GetHandlers() {
-				out := &Output{}
-				var content interface{}
-				if handler.Schemas() == nil {// string type
-					content = string(message)
-				}else{
-					json.NewDecoder(bytes.NewBuffer(message)).Decode(&content)
+			out := &Output{}
+			var content interface{}
+			if (t.config.Settings["format"] != nil && t.config.Settings["format"].(string) == "JSON") ||
+				(t.config.Settings["format"] == nil && isJSON(message)) {
+				err := json.NewDecoder(bytes.NewBuffer(message)).Decode(&content)
+				if err != nil {
+					t.logger.Errorf("error while decoding websocket message of JSON type : %s", err)
+					break
 				}
-				out.Content = content
+			} else {
+				content = string(message)
+			}
+
+			out.Content = content
+
+			for _, handler := range ctx.GetHandlers() {
 				_, err1 := handler.Handle(context.Background(), out)
 				if err1 != nil {
 					t.logger.Errorf("Run action  failed [%s] ", err1)
@@ -167,6 +174,11 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 	return nil
 }
 
+func isJSON(str []byte) bool {
+	var js json.RawMessage
+	return json.Unmarshal(str, &js) == nil
+}
+
 // Start starts the trigger
 func (t *Trigger) Start() error {
 	return nil
@@ -175,7 +187,7 @@ func (t *Trigger) Start() error {
 // Stop stops the trigger
 func (t *Trigger) Stop() error {
 	err := t.wsconn.WriteMessage(websocket.CloseMessage, []byte("Closing connection while stopping trigger"))
-	if err != nil{
+	if err != nil {
 		t.logger.Warnf("Error received: [%s] while sending close message when Stopping Trigger", err)
 	}
 	t.wsconn.Close()
