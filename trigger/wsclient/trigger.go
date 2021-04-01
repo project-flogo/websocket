@@ -8,12 +8,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/project-flogo/core/data/metadata"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+
+	"github.com/project-flogo/core/data/metadata"
 
 	"github.com/gorilla/websocket"
 	"github.com/project-flogo/core/action"
@@ -163,6 +164,7 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 			out.Content = content
 
 			for _, handler := range ctx.GetHandlers() {
+
 				_, err1 := handler.Handle(context.Background(), out)
 				if err1 != nil {
 					t.logger.Errorf("Run action  failed [%s] ", err1)
