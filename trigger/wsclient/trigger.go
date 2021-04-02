@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -40,11 +41,12 @@ func (*Factory) Metadata() *trigger.Metadata {
 
 // Trigger trigger struct
 type Trigger struct {
-	runner   action.Runner
-	wsconn   *websocket.Conn
-	settings *Settings
-	logger   log.Logger
-	config   *trigger.Config
+	runner       action.Runner
+	wsconn       *websocket.Conn
+	settings     *Settings
+	logger       log.Logger
+	config       *trigger.Config
+	tInitContext trigger.InitContext
 }
 
 // New implements trigger.Factory.New
@@ -132,47 +134,8 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 	}
 
 	t.wsconn = conn
-	go func() {
-		defer func() {
-			err := conn.WriteMessage(websocket.CloseMessage, []byte("Sending close message while getting out of reading connection loop"))
-			if err != nil {
-				t.logger.Warnf("Received err [%s] while writing close message", err)
-			}
-			conn.Close()
-		}()
-		for {
-			_, message, err := conn.ReadMessage()
-			//t.logger.Infof("Message received :", string(message)) //TODO REMOVE
-			if err != nil {
-				t.logger.Errorf("error while reading websocket message: %s", err)
-				break
-			}
+	t.tInitContext = ctx
 
-			out := &Output{}
-			var content interface{}
-			if (t.config.Settings["format"] != nil && t.config.Settings["format"].(string) == "JSON") ||
-				(t.config.Settings["format"] == nil && isJSON(message)) {
-				err := json.NewDecoder(bytes.NewBuffer(message)).Decode(&content)
-				if err != nil {
-					t.logger.Errorf("error while decoding websocket message of JSON type : %s", err)
-					break
-				}
-			} else {
-				content = string(message)
-			}
-
-			out.Content = content
-
-			for _, handler := range ctx.GetHandlers() {
-
-				_, err1 := handler.Handle(context.Background(), out)
-				if err1 != nil {
-					t.logger.Errorf("Run action  failed [%s] ", err1)
-				}
-			}
-		}
-		t.logger.Infof("stopped listening to websocket endpoint")
-	}()
 	return nil
 }
 
@@ -183,6 +146,51 @@ func isJSON(str []byte) bool {
 
 // Start starts the trigger
 func (t *Trigger) Start() error {
+	if t.wsconn != nil {
+		go func() {
+			defer func() {
+				err := t.wsconn.WriteMessage(websocket.CloseMessage, []byte("Sending close message while getting out of reading connection loop"))
+				if err != nil {
+					t.logger.Warnf("Received err [%s] while writing close message", err)
+				}
+				t.wsconn.Close()
+			}()
+			for {
+				_, message, err := t.wsconn.ReadMessage()
+				//t.logger.Infof("Message received :", string(message)) //TODO REMOVE
+				if err != nil {
+					t.logger.Errorf("error while reading websocket message: %s", err)
+					break
+				}
+
+				out := &Output{}
+				var content interface{}
+				if (t.config.Settings["format"] != nil && t.config.Settings["format"].(string) == "JSON") ||
+					(t.config.Settings["format"] == nil && isJSON(message)) {
+					err := json.NewDecoder(bytes.NewBuffer(message)).Decode(&content)
+					if err != nil {
+						t.logger.Errorf("error while decoding websocket message of JSON type : %s", err)
+						break
+					}
+				} else {
+					content = string(message)
+				}
+
+				out.Content = content
+
+				for _, handler := range t.tInitContext.GetHandlers() {
+					_, err1 := handler.Handle(context.Background(), out)
+					if err1 != nil {
+						t.logger.Errorf("Run action  failed [%s] ", err1)
+					}
+				}
+			}
+			t.logger.Infof("stopped listening to websocket endpoint")
+		}()
+	} else {
+		t.logger.Error("Websocket Connection not initialized")
+		return errors.New("Websocket Connection not initialized")
+	}
 	return nil
 }
 
