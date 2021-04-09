@@ -35,7 +35,10 @@ func (a *Activity) Eval(ctx activity.Context) (done bool, err error) {
 		return false, err
 	}
 	logger := ctx.Logger()
-	conn := input.WSConnection.(*websocket.Conn)
+	conn, ok := input.WSConnection.(*websocket.Conn)
+	if !ok {
+		return false, errors.New("Configured connection is not a WebSocket Connection")
+	}
 	if conn == nil {
 		return false, errors.New("WSConnection is non configured")
 	}
