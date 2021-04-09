@@ -6,17 +6,6 @@
   "description": "Websocket Write Data Activity",
   "homepage": "https://github.com/project-flogo/websocket/tree/master/activity/wswritedata",
   "settings": [
-    {
-      "name": "uri",
-      "type": "string",
-      "description": "Backend websocket uri to connect",
-      "display": {
-        "name": "URI",
-        "description": "Backend websocket uri to connect",
-        "type": "string",
-        "appPropertySupport": true
-      }
-    }
   ],
   "input": [
     {
