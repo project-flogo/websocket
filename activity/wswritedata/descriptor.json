@@ -1,0 +1,22 @@
+{
+  "name": "wswritedata",
+  "type": "flogo:activity",
+  "version": "0.0.1",
+  "title": "Websocket Write Data Activity",
+  "description": "Websocket Write Data Activity",
+  "homepage": "https://github.com/project-flogo/websocket/tree/master/activity/wswritedata",
+  "settings": [
+  ],
+  "input": [
+    {
+      "name": "message",
+      "type": "any",
+      "description": "A message to send"
+    },
+    {
+      "name": "wsconnection",
+      "type": "any",
+      "description": "WebSocket connection"
+    }
+  ]
+}
