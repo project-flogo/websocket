@@ -1,5 +1,5 @@
 {
-  "name": "wsclient",
+  "name": "wssubscriber",
   "type": "flogo:trigger",
   "version": "0.0.1",
   "title": "Websocket Subscriber",
