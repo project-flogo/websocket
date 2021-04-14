@@ -12,7 +12,6 @@ import (
 	"github.com/project-flogo/core/support/log"
 )
 
-
 type Parameters struct {
 	Headers        []*TypedValue `json:"headers"`
 	PathParams     []*TypedValue `json:"pathParams"`
@@ -99,7 +98,7 @@ func (t *TypedValue) ToString(log log.Logger) string {
 	return ""
 }
 
-func GetParameter(context activity.Context,input *Input, log log.Logger) (params *Parameters, err error) {
+func GetParameter(context activity.Context, input *Input, log log.Logger) (params *Parameters, err error) {
 	params = &Parameters{}
 	//Headers
 	log.Debug("Reading Request Header parameters")
@@ -174,11 +173,11 @@ func GetParameter(context activity.Context,input *Input, log log.Logger) (params
 			for _, qParam := range queryParams {
 				isRequired := qParam.Required
 				paramName := qParam.Name
-				if isRequired == "true" && inputQueries[paramName] == "" {
+				if isRequired == "true" && inputQueries[paramName] == nil {
 					return nil, fmt.Errorf("Required query parameter [%s] is not configured.", paramName)
 				}
 
-				if inputQueries[paramName] != "" {
+				if inputQueries[paramName] != nil {
 					if qParam.Repeating == "true" {
 						val := inputQueries[paramName]
 						switch reflect.TypeOf(val).Kind() {
