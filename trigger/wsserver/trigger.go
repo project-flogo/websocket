@@ -177,8 +177,8 @@ func newActionHandler(rt *Trigger, handlerwrapper *HandlerWrapper, mode string) 
 			if pathParamMetadata != nil {
 				resultWithPathparams, err := ParseOutputPathParams(pathParamMetadata, ps, rt)
 				if err != nil {
-					rt.logger.Info("Unable to parse Path Params: ", err)
-					//return
+					rt.logger.Info("Unable to parse Path Parameters: ", err)
+					return
 				} else if resultWithPathparams != nil {
 					out.PathParams = resultWithPathparams
 				}
@@ -189,6 +189,7 @@ func newActionHandler(rt *Trigger, handlerwrapper *HandlerWrapper, mode string) 
 		if queryParamMetadata != nil {
 			resultWithQueryparams, err := ParseOutputQueryParams(queryParamMetadata, r, w, rt)
 			if err != nil {
+				rt.logger.Info("Unable to parse Query Parameters: ", err)
 				return
 			} else if resultWithQueryparams != nil {
 				out.QueryParams = resultWithQueryparams
@@ -199,7 +200,7 @@ func newActionHandler(rt *Trigger, handlerwrapper *HandlerWrapper, mode string) 
 		if headerMetadata != nil {
 			resultWithHeaders, err := ParseOutputHeaders(headerMetadata, r, w, rt)
 			if err != nil {
-				//rt.logger.Info("Unable to parse Headers: ", err)
+				rt.logger.Info("Unable to parse Headers: ", err)
 				return
 			} else if resultWithHeaders != nil {
 				out.Headers = resultWithHeaders
@@ -208,6 +209,7 @@ func newActionHandler(rt *Trigger, handlerwrapper *HandlerWrapper, mode string) 
 
 		// upgrade conn
 		upgrader := websocket.Upgrader{}
+		upgrader.CheckOrigin = func(r *http.Request) bool { return true }
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			rt.logger.Errorf("upgrade error", err)
@@ -368,14 +370,14 @@ func ParseOutputPathParams(outputJsonData interface{}, ps httprouter.Params, rt 
 	}
 	if sec != nil {
 		definePathParam, _ := ParseParams(sec)
-		fmt.Println("definePathParam is : ", definePathParam)
+		rt.logger.Debug("definedPathParam is : ", definePathParam)
+		rt.logger.Debug("Received path params : ", ps)
 		if definePathParam != nil {
 			pathParams := make(map[string]string)
 			for _, qParam := range definePathParam {
 				if ps.ByName(qParam.Name) == "" && strings.EqualFold(qParam.Required, "true") {
 					errMsg := fmt.Sprintf("Required path parameter [%s] is not set", qParam.Name)
 					rt.logger.Info(errMsg)
-					//rt.logger.Error(errMsg)
 					return nil, nil
 				}
 				if ps.ByName(qParam.Name) != "" {
@@ -383,7 +385,6 @@ func ParseOutputPathParams(outputJsonData interface{}, ps httprouter.Params, rt 
 					if err != nil {
 						errMsg := fmt.Sprintf("Fail to validate path parameter: %v", err)
 						rt.logger.Info(errMsg)
-						//rt.logger.Error(errMsg)
 						return nil, nil
 					}
 					pathParams[qParam.Name] = values[0].(string)
@@ -408,6 +409,7 @@ func ParseOutputQueryParams(outputJsonData interface{}, r *http.Request, w http.
 		definedQueryParams, _ := ParseParams(sec)
 		if definedQueryParams != nil {
 			queryValues := r.URL.Query()
+			rt.logger.Debug("Received queryParams: ", queryValues)
 			queryParams := make(map[string]interface{}, len(definedQueryParams))
 			for _, qParam := range definedQueryParams {
 				value := queryValues[qParam.Name]
@@ -451,8 +453,7 @@ func ParseOutputHeaders(outputJsonData interface{}, r *http.Request, w http.Resp
 		if definedHeaderParams != nil {
 			headers := make(map[string]interface{}, len(definedHeaderParams))
 			headerValues := r.Header
-			fmt.Println("&&&&&&&&&&& header values: ", headerValues)
-			rt.logger.Debug(headerValues)
+			rt.logger.Debug("Received headers: ", headerValues)
 			for _, hParam := range definedHeaderParams {
 				value := headerValues[http.CanonicalHeaderKey(hParam.Name)]
 				if len(value) == 0 && hParam.Required == "true" {

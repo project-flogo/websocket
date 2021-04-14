@@ -126,9 +126,9 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 			defer res.Body.Close()
 			body, err1 := ioutil.ReadAll(res.Body)
 			if err1 != nil {
-				ctx.Logger().Errorf("res code is %v error while reading response payload is %s ", res.StatusCode, err1)
+				ctx.Logger().Errorf("response code is %v error while reading response payload is %s ", res.StatusCode, err1)
 			}
-			t.logger.Errorf("res code is %v payload is %s , err is %s", res.StatusCode, string(body), err)
+			t.logger.Errorf("response code is %v payload is %s , error is %s", res.StatusCode, string(body), err)
 		}
 		return fmt.Errorf("error while connecting to websocket endpoint[%s] - %s", urlstring, err)
 	}
@@ -151,7 +151,7 @@ func (t *Trigger) Start() error {
 			defer func() {
 				err := t.wsconn.WriteMessage(websocket.CloseMessage, []byte("Sending close message while getting out of reading connection loop"))
 				if err != nil {
-					t.logger.Warnf("Received err [%s] while writing close message", err)
+					t.logger.Warnf("Received error [%s] while writing close message", err)
 				}
 				t.wsconn.Close()
 			}()
@@ -248,7 +248,7 @@ func decodeCerts(certVal string, log log.Logger) ([]byte, error) {
 			certRealValue, ok := certObj["content"].(string)
 			log.Infof("Fetched Content from Certificate Object")
 			if !ok || certRealValue == "" {
-				return nil, fmt.Errorf("Didn't found the certificate content")
+				return nil, fmt.Errorf("Did not found the certificate content")
 			}
 
 			index := strings.IndexAny(certRealValue, ",")
