@@ -73,7 +73,7 @@
         "type": "string",
         "required": true,
         "allowed": ["GET", "POST", "PUT", "PATCH", "DELETE"],
-        "description": "HTTP request method. It can be"
+        "description": "HTTP request method."
       },
       {
         "name": "path",
