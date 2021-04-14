@@ -111,7 +111,8 @@ func (a *Activity) Eval(ctx activity.Context) (done bool, err error) {
 			dialer = *websocket.DefaultDialer
 		}
 		ctx.Logger().Debug("Creating new connection")
-		ctx.Logger().Debugf("dialing websocket endpoint[%s] with headers[%s]...", builtURL, h)
+		ctx.Logger().Infof("dialing websocket endpoint[%s]...", builtURL)
+		ctx.Logger().Debugf("dialing websocket endpoint with headers[%s]...", h)
 		conn, res, err := dialer.Dial(builtURL, h)
 		if err != nil {
 			if res != nil {
