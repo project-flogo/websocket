@@ -119,10 +119,10 @@ func GetParameter(context activity.Context, input *Input, log log.Logger) (param
 			for _, hParam := range headers {
 				isRequired := hParam.Required
 				paramName := hParam.Name
-				if isRequired == "true" && inputHeaders[paramName] == "" {
+				if isRequired == "true" && inputHeaders[paramName] == nil {
 					return nil, fmt.Errorf("Required header parameter [%s] is not configured.", paramName)
 				}
-				if inputHeaders[paramName] != "" {
+				if inputHeaders[paramName] != nil {
 					if hParam.Repeating == "true" {
 						val := inputHeaders[paramName]
 						switch reflect.TypeOf(val).Kind() {
