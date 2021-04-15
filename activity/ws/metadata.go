@@ -13,8 +13,8 @@ type Settings struct {
 type Input struct {
 	Message     interface{}            `md:"message,required"`
 	PathParams  map[string]string      `md:"pathParams"`
-	QueryParams map[string]string `md:"queryParams"`
-	Headers     map[string]string `md:"headers"`
+	QueryParams map[string]interface{} `md:"queryParams"`
+	Headers     map[string]interface{} `md:"headers"`
 }
 
 // ToMap converts the input into a map
@@ -28,17 +28,17 @@ func (i *Input) ToMap() map[string]interface{} {
 }
 
 // FromMap converts the values from a map to a struct
-func (i *Input) FromMap(values map[string]interface{})  (err error) {
+func (i *Input) FromMap(values map[string]interface{}) (err error) {
 	i.Message = values["message"]
 	i.PathParams, err = coerce.ToParams(values["pathParams"])
 	if err != nil {
 		return err
 	}
-	i.QueryParams, err = coerce.ToParams(values["queryParams"])
+	i.QueryParams, err = coerce.ToObject(values["queryParams"])
 	if err != nil {
 		return err
 	}
-	i.Headers, err = coerce.ToParams(values["headers"])
+	i.Headers, err = coerce.ToObject(values["headers"])
 	if err != nil {
 		return err
 	}

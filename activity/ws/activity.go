@@ -6,18 +6,19 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/websocket"
-	"github.com/pkg/errors"
-	"github.com/project-flogo/core/activity"
-	"github.com/project-flogo/core/data/coerce"
-	"github.com/project-flogo/core/data/metadata"
-	"github.com/project-flogo/core/support/log"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"sync"
+
+	"github.com/gorilla/websocket"
+	"github.com/pkg/errors"
+	"github.com/project-flogo/core/activity"
+	"github.com/project-flogo/core/data/coerce"
+	"github.com/project-flogo/core/data/metadata"
+	"github.com/project-flogo/core/support/log"
 )
 
 func init() {
@@ -109,23 +110,25 @@ func (a *Activity) Eval(ctx activity.Context) (done bool, err error) {
 		} else {
 			dialer = *websocket.DefaultDialer
 		}
-		ctx.Logger().Info("Creating new connection")
+		ctx.Logger().Debug("Creating new connection")
+		ctx.Logger().Infof("dialing websocket endpoint[%s]...", builtURL)
+		ctx.Logger().Debugf("dialing websocket endpoint with headers[%s]...", h)
 		conn, res, err := dialer.Dial(builtURL, h)
 		if err != nil {
 			if res != nil {
 				defer res.Body.Close()
 				body, err1 := ioutil.ReadAll(res.Body)
-				if err1 != nil{
-					ctx.Logger().Errorf("res code is %v error while reading response payload is %s ", res.StatusCode,  err1)
+				if err1 != nil {
+					ctx.Logger().Errorf("response code is %v error while reading response payload is %s ", res.StatusCode, err1)
 				}
-				ctx.Logger().Errorf("res code is %v payload is %s , err is %s", res.StatusCode, string(body), err)
+				ctx.Logger().Errorf("response code is %v payload is %s , error is %s", res.StatusCode, string(body), err)
 			}
 			return false, err
 		}
 		a.cachedClients.Store(key, conn)
 		connection = conn
 	} else {
-		ctx.Logger().Info("Reusing connection from cache")
+		ctx.Logger().Debug("Reusing connection from cache")
 		connection = cachedConnection.(*websocket.Conn)
 	}
 

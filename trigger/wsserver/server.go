@@ -49,7 +49,7 @@ type Server struct {
 	serverKey        string
 	enableClientAuth bool
 	trustStore       string
-	logger   log.Logger
+	logger           log.Logger
 }
 
 // InstanceID the server instance id
@@ -268,7 +268,7 @@ func decodeCerts(certVal string, tlogger log.Logger) ([]byte, error) {
 			certRealValue, ok := certObj["content"].(string)
 			tlogger.Info("Fetched Content from Certificate Object")
 			if !ok || certRealValue == "" {
-				return nil, fmt.Errorf("Didn't found the certificate content")
+				return nil, fmt.Errorf("Did not found the certificate content")
 			}
 
 			index := strings.IndexAny(certRealValue, ",")
