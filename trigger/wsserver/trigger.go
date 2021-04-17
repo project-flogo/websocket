@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"
@@ -43,11 +46,12 @@ func (*Factory) Metadata() *trigger.Metadata {
 
 // Trigger trigger struct
 type Trigger struct {
-	server   *Server
-	runner   action.Runner
-	handlers []*HandlerWrapper
-	settings *Settings
-	logger   log.Logger
+	server       *Server
+	runner       action.Runner
+	handlers     []*HandlerWrapper
+	settings     *Settings
+	logger       log.Logger
+	continuePing bool
 }
 
 type HandlerWrapper struct {
@@ -125,7 +129,7 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 		router.Handle(method, replacePath(path), newActionHandler(t, tHandler, mode))
 	}
 
-	t.logger.Debugf("Configured on port %d", t.settings.Port)
+	t.logger.Infof("Configured on port %d", t.settings.Port)
 	t.server = NewServer(addr, router, enableTLS, serverCert, serverKey, enableClientAuth, trustStore, t.logger)
 
 	return nil
@@ -139,6 +143,7 @@ func (t *Trigger) Start() error {
 // Stop stops the trigger
 func (t *Trigger) Stop() error {
 	t.logger.Info("Stopping Trigger")
+	t.continuePing = false
 	for _, handler := range t.handlers {
 		if handler.wsconnection != nil {
 			for conn, _ := range handler.wsconnection {
@@ -157,7 +162,7 @@ func replacePath(path string) string {
 
 func newActionHandler(rt *Trigger, handlerwrapper *HandlerWrapper, mode string) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-		rt.logger.Infof("received incomming request")
+		rt.logger.Infof("received incoming request")
 		out := &Output{
 			QueryParams: make(map[string]interface{}),
 			PathParams:  make(map[string]string),
@@ -215,7 +220,28 @@ func newActionHandler(rt *Trigger, handlerwrapper *HandlerWrapper, mode string) 
 			rt.logger.Errorf("upgrade error", err)
 			return
 		}
+		// ping handler at server end
+		conn.SetPingHandler(
+			func(message string) error {
+				rt.logger.Infof("Received Ping from client, %s", message)
+				var ErrCloseSent = errors.New("websocket: close sent")
+				rt.logger.Info("Sending Pong from server....")
+				err := conn.WriteControl(websocket.PongMessage, []byte(message), time.Now().Add(time.Second))
+				if err == ErrCloseSent {
+					return nil
+				} else if e, ok := err.(net.Error); ok && e.Temporary() {
+					return nil
+				}
+				return err
+			})
+		// ping handler at server end
 
+		// ping from server for special case where client is not able to send it
+		startServerPing := strings.EqualFold(os.Getenv("FLOGO_WEBSOCKET_SERVERPING"), "TRUE")
+		if startServerPing {
+			rt.continuePing = true
+			go ping(conn, rt)
+		}
 		handlerwrapper.wsconnection[conn] = ""
 		clientAdd := conn.RemoteAddr()
 		rt.logger.Infof("Upgraded to websocket protocol")
@@ -226,6 +252,7 @@ func newActionHandler(rt *Trigger, handlerwrapper *HandlerWrapper, mode string) 
 			rt.logger.Info("Closing connection while going out of trigger handler")
 			conn.Close()
 		}()
+		out.WSconnection = conn
 		switch mode {
 		case ModeMessage:
 			for {
@@ -238,7 +265,6 @@ func newActionHandler(rt *Trigger, handlerwrapper *HandlerWrapper, mode string) 
 			}
 			rt.logger.Infof("stopped listening to websocket endpoint")
 		case ModeConnection:
-			out.WSconnection = conn
 			_, err := handlerwrapper.handler.Handle(context.Background(), out)
 			if err != nil {
 				rt.logger.Errorf("Run action  failed [%s] ", err)
@@ -496,4 +522,23 @@ func notEmpty(array []string) bool {
 		}
 	}
 	return false
+}
+
+func ping(connection *websocket.Conn, tr *Trigger) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		if tr.continuePing {
+			select {
+			case t := <-ticker.C:
+				tr.logger.Infof("Sending Ping at timestamp : %v", t)
+				if err := connection.WriteControl(websocket.PingMessage, []byte("---HeartBeat---"), time.Now().Add(time.Second)); err != nil {
+					tr.logger.Infof("error while sending ping: %v", err)
+				}
+			}
+		} else {
+			tr.logger.Infof("stopping ping ticker for conn: %v while engine getting stopped", connection.UnderlyingConn())
+			return
+		}
+	}
 }

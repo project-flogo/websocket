@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/project-flogo/core/data/metadata"
 
@@ -47,6 +48,7 @@ type Trigger struct {
 	logger       log.Logger
 	config       *trigger.Config
 	tInitContext trigger.InitContext
+	continuePing bool
 }
 
 // New implements trigger.Factory.New
@@ -56,7 +58,7 @@ func (*Factory) New(config *trigger.Config) (trigger.Trigger, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Trigger{settings: s, config: config}, nil
+	return &Trigger{settings: s, config: config, continuePing: true}, nil
 }
 
 // Initialize initializes the trigger
@@ -134,6 +136,13 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 	}
 
 	t.wsconn = conn
+	// send ping to avoid connection timeout, for newly created connection only as its goroutine
+	conn.SetPongHandler(func(msg string) error { /* ws.SetReadDeadline(time.Now().Add(pongWait)); */
+		ctx.Logger().Infof("received pong msg from server: %s", msg)
+		return nil
+	})
+	// send ping to avoid TCI connection timeout
+	go ping(conn, t)
 	t.tInitContext = ctx
 
 	return nil
@@ -196,6 +205,7 @@ func (t *Trigger) Start() error {
 
 // Stop stops the trigger
 func (t *Trigger) Stop() error {
+	t.continuePing = false
 	err := t.wsconn.WriteMessage(websocket.CloseMessage, []byte("Closing connection while stopping trigger"))
 	if err != nil {
 		t.logger.Warnf("Error received: [%s] while sending close message when Stopping Trigger", err)
@@ -287,4 +297,23 @@ func decodeCerts(certVal string, log log.Logger) ([]byte, error) {
 	//===========These blocks of code to be removed after sriharsha fixes FLOGO-2673=================================
 
 	return []byte(certVal), nil
+}
+
+func ping(connection *websocket.Conn, tr *Trigger) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		if tr.continuePing {
+			select {
+			case t := <-ticker.C:
+				tr.logger.Infof("Sending Ping at timestamp : %v", t)
+				if err := connection.WriteControl(websocket.PingMessage, []byte("---HeartBeat---"), time.Now().Add(time.Second)); err != nil {
+					tr.logger.Infof("error while sending ping: %v", err)
+				}
+			}
+		} else {
+			tr.logger.Infof("stopping ping ticker for conn: %v while engine getting stopped", connection.UnderlyingConn())
+			return
+		}
+	}
 }
