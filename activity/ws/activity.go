@@ -136,7 +136,7 @@ func (a *Activity) Eval(ctx activity.Context) (done bool, err error) {
 
 		// send ping to avoid connection timeout, for newly created connection only as its goroutine
 		connection.SetPongHandler(func(msg string) error { /* ws.SetReadDeadline(time.Now().Add(pongWait)); */
-			ctx.Logger().Infof("received pong msg from server: %s", msg)
+			ctx.Logger().Debugf("received pong msg from server: %s", msg)
 			return nil
 		})
 		// send ping to avoid TCI connection timeout
@@ -292,13 +292,13 @@ func ping(connection *websocket.Conn, a *Activity) {
 		if a.continuePing {
 			select {
 			case t := <-ticker.C:
-				logger1.Infof("Sending Ping at timestamp : %v", t)
+				logger1.Debugf("Sending Ping at timestamp : %v", t)
 				if err := connection.WriteControl(websocket.PingMessage, []byte("---HeartBeat---"), time.Now().Add(time.Second)); err != nil {
-					logger1.Infof("error while sending ping: %v", err)
+					logger1.Debugf("error while sending ping: %v", err)
 				}
 			}
 		} else {
-			logger1.Infof("stopping ping ticker for conn: %v while engine getting stopped", connection.UnderlyingConn())
+			logger1.Debugf("stopping ping ticker for conn: %v while engine getting stopped", connection.UnderlyingConn())
 			return
 		}
 	}

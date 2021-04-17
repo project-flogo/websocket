@@ -129,7 +129,7 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 		router.Handle(method, replacePath(path), newActionHandler(t, tHandler, mode))
 	}
 
-	t.logger.Infof("Configured on port %d", t.settings.Port)
+	t.logger.Infof("Server Configured on port %d", t.settings.Port)
 	t.server = NewServer(addr, router, enableTLS, serverCert, serverKey, enableClientAuth, trustStore, t.logger)
 
 	return nil
@@ -223,9 +223,9 @@ func newActionHandler(rt *Trigger, handlerwrapper *HandlerWrapper, mode string) 
 		// ping handler at server end
 		conn.SetPingHandler(
 			func(message string) error {
-				rt.logger.Infof("Received Ping from client, %s", message)
+				rt.logger.Debugf("Received Ping from client, %s", message)
 				var ErrCloseSent = errors.New("websocket: close sent")
-				rt.logger.Info("Sending Pong from server....")
+				rt.logger.Debug("Sending Pong from server....")
 				err := conn.WriteControl(websocket.PongMessage, []byte(message), time.Now().Add(time.Second))
 				if err == ErrCloseSent {
 					return nil
@@ -239,6 +239,7 @@ func newActionHandler(rt *Trigger, handlerwrapper *HandlerWrapper, mode string) 
 		// ping from server for special case where client is not able to send it
 		startServerPing := strings.EqualFold(os.Getenv("FLOGO_WEBSOCKET_SERVERPING"), "TRUE")
 		if startServerPing {
+			rt.logger.Debug("Enabling Server to send ping messages to client")
 			rt.continuePing = true
 			go ping(conn, rt)
 		}
@@ -258,10 +259,13 @@ func newActionHandler(rt *Trigger, handlerwrapper *HandlerWrapper, mode string) 
 			for {
 				_, message, err := conn.ReadMessage()
 				if err != nil {
-					rt.logger.Infof("error while reading websocket message: %s", err)
+					rt.logger.Errorf("error while reading websocket message: %s", err)
 					break
 				}
-				handlerRoutine(message, handlerwrapper.handler, out)
+				err1 := handlerRoutine(message, handlerwrapper.handler, out)
+				if err1 != nil{
+					rt.logger.Errorf("Error while processing message : ", err1.Error())
+				}
 			}
 			rt.logger.Infof("stopped listening to websocket endpoint")
 		case ModeConnection:
@@ -397,7 +401,7 @@ func ParseOutputPathParams(outputJsonData interface{}, ps httprouter.Params, rt 
 	if sec != nil {
 		definePathParam, _ := ParseParams(sec)
 		rt.logger.Debug("definedPathParam is : ", definePathParam)
-		rt.logger.Debug("Received path params : ", ps)
+		rt.logger.Info("Received path params : ", ps)
 		if definePathParam != nil {
 			pathParams := make(map[string]string)
 			for _, qParam := range definePathParam {
@@ -435,7 +439,7 @@ func ParseOutputQueryParams(outputJsonData interface{}, r *http.Request, w http.
 		definedQueryParams, _ := ParseParams(sec)
 		if definedQueryParams != nil {
 			queryValues := r.URL.Query()
-			rt.logger.Debug("Received queryParams: ", queryValues)
+			rt.logger.Info("Received queryParams: ", queryValues)
 			queryParams := make(map[string]interface{}, len(definedQueryParams))
 			for _, qParam := range definedQueryParams {
 				value := queryValues[qParam.Name]
@@ -531,13 +535,13 @@ func ping(connection *websocket.Conn, tr *Trigger) {
 		if tr.continuePing {
 			select {
 			case t := <-ticker.C:
-				tr.logger.Infof("Sending Ping at timestamp : %v", t)
+				tr.logger.Debugf("Sending Ping at timestamp : %v", t)
 				if err := connection.WriteControl(websocket.PingMessage, []byte("---HeartBeat---"), time.Now().Add(time.Second)); err != nil {
-					tr.logger.Infof("error while sending ping: %v", err)
+					tr.logger.Debugf("error while sending ping: %v", err)
 				}
 			}
 		} else {
-			tr.logger.Infof("stopping ping ticker for conn: %v while engine getting stopped", connection.UnderlyingConn())
+			tr.logger.Debugf("stopping ping ticker for conn: %v while engine getting stopped", connection.UnderlyingConn())
 			return
 		}
 	}

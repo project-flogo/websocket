@@ -120,8 +120,9 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 	} else {
 		dialer = *websocket.DefaultDialer
 	}
+	t.logger.Infof("dialing websocket endpoint[%s]...", urlstring)
+	t.logger.Debugf("dialing websocket endpoint with headers[%s]...", header)
 
-	t.logger.Debugf("dialing websocket endpoint[%s] with headers[%s]...", urlstring, header)
 	conn, res, err := dialer.Dial(urlstring, header)
 	if err != nil {
 		if res != nil {
@@ -138,7 +139,7 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 	t.wsconn = conn
 	// send ping to avoid connection timeout, for newly created connection only as its goroutine
 	conn.SetPongHandler(func(msg string) error { /* ws.SetReadDeadline(time.Now().Add(pongWait)); */
-		ctx.Logger().Infof("received pong msg from server: %s", msg)
+		ctx.Logger().Debugf("received pong msg from server: %s", msg)
 		return nil
 	})
 	// send ping to avoid TCI connection timeout
@@ -171,7 +172,7 @@ func (t *Trigger) Start() error {
 					t.logger.Errorf("error while reading websocket message: %s", err)
 					break
 				}
-
+				t.logger.Info("New message received...")
 				out := &Output{}
 				var content interface{}
 				if (t.config.Settings["format"] != nil && t.config.Settings["format"].(string) == "JSON") ||
@@ -306,13 +307,13 @@ func ping(connection *websocket.Conn, tr *Trigger) {
 		if tr.continuePing {
 			select {
 			case t := <-ticker.C:
-				tr.logger.Infof("Sending Ping at timestamp : %v", t)
+				tr.logger.Debugf("Sending Ping at timestamp : %v", t)
 				if err := connection.WriteControl(websocket.PingMessage, []byte("---HeartBeat---"), time.Now().Add(time.Second)); err != nil {
-					tr.logger.Infof("error while sending ping: %v", err)
+					tr.logger.Debugf("error while sending ping: %v", err)
 				}
 			}
 		} else {
-			tr.logger.Infof("stopping ping ticker for conn: %v while engine getting stopped", connection.UnderlyingConn())
+			tr.logger.Debugf("stopping ping ticker for conn: %v while engine getting stopped", connection.UnderlyingConn())
 			return
 		}
 	}
