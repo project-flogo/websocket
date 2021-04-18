@@ -144,11 +144,12 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 	})
 	// send ping to avoid TCI connection timeout
 	go ping(conn, t)
-
-	// Initiate conversation is Trigger is in Chat mode
-	if os.Getenv("CHAT") == "Y" {
-		go initiateConversation(conn, t)
-	}
+	/*
+		// Initiate conversation is Trigger is in Chat mode
+		if os.Getenv("CHATMODE") == "TRUE" {
+			go initiateConversation(conn, t)
+		}
+	*/
 	t.tInitContext = ctx
 
 	return nil
