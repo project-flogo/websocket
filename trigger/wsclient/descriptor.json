@@ -10,7 +10,7 @@
       "name": "url",
       "type": "string",
       "required": true,
-      "description": "The websocket url to connect to."
+      "description": "The websocket uri to connect to."
     },
     {
       "name": "allowInsecure",
@@ -39,7 +39,7 @@
     {
       "name": "content",
       "type": "any",
-      "description": "Websocket request payload"
+      "description": "Received websocket message"
     },
     {
       "name": "wsconnection",

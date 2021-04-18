@@ -52,6 +52,7 @@ type Trigger struct {
 	settings     *Settings
 	logger       log.Logger
 	continuePing bool
+	config *trigger.Config
 }
 
 type HandlerWrapper struct {
@@ -66,8 +67,7 @@ func (*Factory) New(config *trigger.Config) (trigger.Trigger, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	return &Trigger{settings: s}, nil
+	return &Trigger{settings: s, config:config}, nil
 }
 
 // Initialize initializes triggers
@@ -126,10 +126,11 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 		mode := s.Mode
 		tHandler := &HandlerWrapper{handler: handler, wsconnection: map[*websocket.Conn]string{}}
 		t.handlers = append(t.handlers, tHandler)
+		t.logger.Infof("%s: Registered handler [Method: %s, Path: %s, Mode: %s]", t.config.Id, method, path, mode)
 		router.Handle(method, replacePath(path), newActionHandler(t, tHandler, mode))
 	}
 
-	t.logger.Infof("Server Configured on port %d", t.settings.Port)
+	t.logger.Infof("%s: Configured on port %d", t.config.Id, t.settings.Port)
 	t.server = NewServer(addr, router, enableTLS, serverCert, serverKey, enableClientAuth, trustStore, t.logger)
 
 	return nil
@@ -142,7 +143,7 @@ func (t *Trigger) Start() error {
 
 // Stop stops the trigger
 func (t *Trigger) Stop() error {
-	t.logger.Info("Stopping Trigger")
+	t.logger.Infof("Stopping Trigger %s", t.config.Id)
 	t.continuePing = false
 	for _, handler := range t.handlers {
 		if handler.wsconnection != nil {
@@ -151,7 +152,7 @@ func (t *Trigger) Stop() error {
 			}
 		}
 	}
-	defer t.logger.Info("Trigger Stopped")
+	defer t.logger.Info("Trigger %s Stopped", t.config.Id)
 	return t.server.Stop()
 }
 
