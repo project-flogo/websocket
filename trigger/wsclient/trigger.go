@@ -137,16 +137,29 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 	}
 
 	t.wsconn = conn
-	// send ping to avoid connection timeout, for newly created connection only as its goroutine
+	// set ponghanlder to print the received pong message from server
 	conn.SetPongHandler(func(msg string) error { /* ws.SetReadDeadline(time.Now().Add(pongWait)); */
 		ctx.Logger().Debugf("received pong msg from server: %s", msg)
 		return nil
 	})
 	// send ping to avoid TCI connection timeout
 	go ping(conn, t)
+
+	// Initiate conversation is Trigger is in Chat mode
+	if os.Getenv("CHAT") == "Y" {
+		go initiateConversation(conn, t)
+	}
 	t.tInitContext = ctx
 
 	return nil
+}
+
+func initiateConversation(connection *websocket.Conn, tr *Trigger) {
+	tr.logger.Info("sending intitialConversation msg: ")
+	err := connection.WriteMessage(websocket.TextMessage, []byte("ClientHello"))
+	if err != nil {
+		tr.logger.Info("Error while sending intitialConversation mag: ", err)
+	}
 }
 
 func isJSON(str []byte) bool {
@@ -167,7 +180,6 @@ func (t *Trigger) Start() error {
 			}()
 			for {
 				_, message, err := t.wsconn.ReadMessage()
-				//t.logger.Infof("Message received :", string(message)) //TODO REMOVE
 				if err != nil {
 					t.logger.Errorf("error while reading websocket message: %s", err)
 					break
@@ -187,6 +199,7 @@ func (t *Trigger) Start() error {
 				}
 
 				out.Content = content
+				out.WSconnection = t.wsconn
 
 				for _, handler := range t.tInitContext.GetHandlers() {
 					_, err1 := handler.Handle(context.Background(), out)

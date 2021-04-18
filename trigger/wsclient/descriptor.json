@@ -40,6 +40,11 @@
       "name": "content",
       "type": "any",
       "description": "Websocket request payload"
+    },
+    {
+      "name": "wsconnection",
+      "type": "any",
+      "description": "The websocket connection"
     }
   ],
   "reply": [],
