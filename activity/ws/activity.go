@@ -55,11 +55,11 @@ func (a *Activity) Metadata() *activity.Metadata {
 	return activityMd
 }
 
-var logger1 log.Logger
+var actLogger log.Logger
 
 // Eval implements api.Activity.Eval - Invokes a web socket operation
 func (a *Activity) Eval(ctx activity.Context) (done bool, err error) {
-	logger1 = ctx.Logger()
+	actLogger = ctx.Logger()
 	input := &Input{}
 	err = ctx.GetInputObject(input)
 	if err != nil {
@@ -125,9 +125,9 @@ func (a *Activity) Eval(ctx activity.Context) (done bool, err error) {
 				defer res.Body.Close()
 				body, err1 := ioutil.ReadAll(res.Body)
 				if err1 != nil {
-					ctx.Logger().Errorf("response code is %v , error while reading response payload is %s ", res.StatusCode, err1)
+					ctx.Logger().Errorf("response code is: %v , error while reading response payload is: %s ", res.StatusCode, err1)
 				}
-				ctx.Logger().Errorf("response code is %v , payload is %s , error is %s", res.StatusCode, string(body), err)
+				ctx.Logger().Errorf("response code is: %v , payload is: %s , error is: %s", res.StatusCode, string(body), err)
 			}
 			return false, err
 		}
@@ -292,13 +292,13 @@ func ping(connection *websocket.Conn, a *Activity) {
 		if a.continuePing {
 			select {
 			case t := <-ticker.C:
-				logger1.Debugf("Sending Ping at timestamp : %v", t)
+				actLogger.Debugf("Sending Ping at timestamp : %v", t)
 				if err := connection.WriteControl(websocket.PingMessage, []byte("---HeartBeat---"), time.Now().Add(time.Second)); err != nil {
-					logger1.Debugf("error while sending ping: %v", err)
+					actLogger.Errorf("error while sending ping: %v", err)
 				}
 			}
 		} else {
-			logger1.Debugf("stopping ping ticker for conn: %v while engine getting stopped", connection.UnderlyingConn())
+			actLogger.Debugf("stopping ping ticker for conn: %v while engine getting stopped", connection.UnderlyingConn())
 			return
 		}
 	}
@@ -309,17 +309,17 @@ func (a *Activity) Cleanup() error {
 	a.cachedClients.Range(func(key, value interface{}) bool {
 		conn, ok := value.(*websocket.Conn)
 		if !ok {
-			logger1.Info("value is not websocket connection type to close while activity cleanup")
+			actLogger.Info("value is not websocket connection type to close while activity cleanup")
 		} else {
 			err := conn.WriteControl(websocket.CloseMessage, []byte("Close connection while Activity cleanup"), time.Now().Add(time.Second))
 			if err != nil {
-				logger1.Infof("error while sending close message: %v", err)
+				actLogger.Warnf("error while sending close message: %v", err)
 			}
 			err1 := conn.Close()
 			if err1 != nil {
-				logger1.Infof("error while closing connection: %v", err1)
+				actLogger.Infof("error while closing connection: %v", err1)
 			}
-			logger1.Infof("Connection closed while activity cleanup.....")
+			actLogger.Infof("Connection closed while activity cleanup.....")
 		}
 		return true
 	})

@@ -120,8 +120,8 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 	} else {
 		dialer = *websocket.DefaultDialer
 	}
-	t.logger.Infof("dialing websocket endpoint[%s]...", urlstring)
-	t.logger.Debugf("dialing websocket endpoint with headers[%s]...", header)
+	t.logger.Infof("[ %s ] dialing websocket endpoint[%s]...", t.config.Id, urlstring)
+	t.logger.Debugf("[ %s ] dialing websocket endpoint with headers[%s]...", t.config.Id, header)
 
 	conn, res, err := dialer.Dial(urlstring, header)
 	if err != nil {
@@ -129,9 +129,9 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 			defer res.Body.Close()
 			body, err1 := ioutil.ReadAll(res.Body)
 			if err1 != nil {
-				ctx.Logger().Errorf("response code is %v error while reading response payload is %s ", res.StatusCode, err1)
+				ctx.Logger().Errorf("response code is: %v , error while reading response payload is: %s ", res.StatusCode, err1)
 			}
-			t.logger.Errorf("response code is %v payload is %s , error is %s", res.StatusCode, string(body), err)
+			t.logger.Errorf("response code is: %v , payload is: %s , error is: %s", res.StatusCode, string(body), err)
 		}
 		return fmt.Errorf("error while connecting to websocket endpoint[%s] - %s", urlstring, err)
 	}
@@ -144,23 +144,9 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 	})
 	// send ping to avoid TCI connection timeout
 	go ping(conn, t)
-	/*
-		// Initiate conversation is Trigger is in Chat mode
-		if os.Getenv("CHATMODE") == "TRUE" {
-			go initiateConversation(conn, t)
-		}
-	*/
 	t.tInitContext = ctx
 
 	return nil
-}
-
-func initiateConversation(connection *websocket.Conn, tr *Trigger) {
-	tr.logger.Info("sending intitialConversation msg: ")
-	err := connection.WriteMessage(websocket.TextMessage, []byte("ClientHello"))
-	if err != nil {
-		tr.logger.Info("Error while sending intitialConversation mag: ", err)
-	}
 }
 
 func isJSON(str []byte) bool {
@@ -173,10 +159,11 @@ func (t *Trigger) Start() error {
 	if t.wsconn != nil {
 		go func() {
 			defer func() {
-				err := t.wsconn.WriteMessage(websocket.CloseMessage, []byte("Sending close message while getting out of reading connection loop"))
+				err := t.wsconn.WriteControl(websocket.CloseMessage, []byte("Sending close message while getting out of reading connection loop"), time.Now().Add(time.Second))
 				if err != nil {
 					t.logger.Warnf("Received error [%s] while writing close message", err)
 				}
+				t.logger.Info("Closing connection while going out of trigger handler")
 				t.wsconn.Close()
 			}()
 			for {
@@ -185,7 +172,7 @@ func (t *Trigger) Start() error {
 					t.logger.Errorf("error while reading websocket message: %s", err)
 					break
 				}
-				t.logger.Info("New message received...")
+				t.logger.Debug("New message received...")
 				out := &Output{}
 				var content interface{}
 				if (t.config.Settings["format"] != nil && t.config.Settings["format"].(string) == "JSON") ||
@@ -220,12 +207,14 @@ func (t *Trigger) Start() error {
 
 // Stop stops the trigger
 func (t *Trigger) Stop() error {
+	t.logger.Infof("Stopping Trigger %s", t.config.Id)
 	t.continuePing = false
-	err := t.wsconn.WriteMessage(websocket.CloseMessage, []byte("Closing connection while stopping trigger"))
+	err := t.wsconn.WriteControl(websocket.CloseMessage, []byte("Closing connection while stopping trigger"), time.Now().Add(time.Second))
 	if err != nil {
 		t.logger.Warnf("Error received: [%s] while sending close message when Stopping Trigger", err)
 	}
 	t.wsconn.Close()
+	defer t.logger.Info("Trigger %s Stopped", t.config.Id)
 	return nil
 }
 
@@ -323,7 +312,7 @@ func ping(connection *websocket.Conn, tr *Trigger) {
 			case t := <-ticker.C:
 				tr.logger.Debugf("Sending Ping at timestamp : %v", t)
 				if err := connection.WriteControl(websocket.PingMessage, []byte("---HeartBeat---"), time.Now().Add(time.Second)); err != nil {
-					tr.logger.Debugf("error while sending ping: %v", err)
+					tr.logger.Errorf("error while sending ping: %v", err)
 				}
 			}
 		} else {

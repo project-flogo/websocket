@@ -52,7 +52,7 @@ type Trigger struct {
 	settings     *Settings
 	logger       log.Logger
 	continuePing bool
-	config *trigger.Config
+	config       *trigger.Config
 }
 
 type HandlerWrapper struct {
@@ -67,7 +67,7 @@ func (*Factory) New(config *trigger.Config) (trigger.Trigger, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Trigger{settings: s, config:config}, nil
+	return &Trigger{settings: s, config: config}, nil
 }
 
 // Initialize initializes triggers
@@ -251,6 +251,10 @@ func newActionHandler(rt *Trigger, handlerwrapper *HandlerWrapper, mode string) 
 
 		// params
 		defer func() {
+			err := conn.WriteControl(websocket.CloseMessage, []byte("Sending close message before closing connection while going out of trigger handler"), time.Now().Add(time.Second))
+			if err != nil {
+				rt.logger.Warnf("Received error [%s] while writing close message", err)
+			}
 			rt.logger.Info("Closing connection while going out of trigger handler")
 			conn.Close()
 		}()
@@ -264,7 +268,7 @@ func newActionHandler(rt *Trigger, handlerwrapper *HandlerWrapper, mode string) 
 					break
 				}
 				err1 := handlerRoutine(message, handlerwrapper.handler, out)
-				if err1 != nil{
+				if err1 != nil {
 					rt.logger.Errorf("Error while processing message : ", err1.Error())
 				}
 			}
@@ -538,7 +542,7 @@ func ping(connection *websocket.Conn, tr *Trigger) {
 			case t := <-ticker.C:
 				tr.logger.Debugf("Sending Ping at timestamp : %v", t)
 				if err := connection.WriteControl(websocket.PingMessage, []byte("---HeartBeat---"), time.Now().Add(time.Second)); err != nil {
-					tr.logger.Debugf("error while sending ping: %v", err)
+					tr.logger.Errorf("error while sending ping: %v", err)
 				}
 			}
 		} else {
