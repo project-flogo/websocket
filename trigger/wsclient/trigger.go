@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/project-flogo/core/data/metadata"
 
@@ -47,6 +48,7 @@ type Trigger struct {
 	logger       log.Logger
 	config       *trigger.Config
 	tInitContext trigger.InitContext
+	continuePing bool
 }
 
 // New implements trigger.Factory.New
@@ -56,7 +58,7 @@ func (*Factory) New(config *trigger.Config) (trigger.Trigger, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Trigger{settings: s, config: config}, nil
+	return &Trigger{settings: s, config: config, continuePing: true}, nil
 }
 
 // Initialize initializes the trigger
@@ -118,22 +120,30 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 	} else {
 		dialer = *websocket.DefaultDialer
 	}
+	t.logger.Infof("[ %s ] dialing websocket endpoint [%s]...", t.config.Id, urlstring)
+	t.logger.Debugf("[ %s ] dialing websocket endpoint with headers [%s]...", t.config.Id, header)
 
-	t.logger.Debugf("dialing websocket endpoint[%s] with headers[%s]...", urlstring, header)
 	conn, res, err := dialer.Dial(urlstring, header)
 	if err != nil {
 		if res != nil {
 			defer res.Body.Close()
 			body, err1 := ioutil.ReadAll(res.Body)
 			if err1 != nil {
-				ctx.Logger().Errorf("response code is %v error while reading response payload is %s ", res.StatusCode, err1)
+				ctx.Logger().Errorf("response code is: %v , error while reading response payload is: %s ", res.StatusCode, err1)
 			}
-			t.logger.Errorf("response code is %v payload is %s , error is %s", res.StatusCode, string(body), err)
+			t.logger.Errorf("response code is: %v , payload is: %s , error is: %s", res.StatusCode, string(body), err)
 		}
 		return fmt.Errorf("error while connecting to websocket endpoint[%s] - %s", urlstring, err)
 	}
 
 	t.wsconn = conn
+	// set ponghanlder to print the received pong message from server
+	conn.SetPongHandler(func(msg string) error { /* ws.SetReadDeadline(time.Now().Add(pongWait)); */
+		ctx.Logger().Debugf("received pong msg from server: %s", msg)
+		return nil
+	})
+	// send ping to avoid TCI connection timeout
+	go ping(conn, t)
 	t.tInitContext = ctx
 
 	return nil
@@ -149,20 +159,20 @@ func (t *Trigger) Start() error {
 	if t.wsconn != nil {
 		go func() {
 			defer func() {
-				err := t.wsconn.WriteMessage(websocket.CloseMessage, []byte("Sending close message while getting out of reading connection loop"))
+				err := t.wsconn.WriteControl(websocket.CloseMessage, []byte("Sending close message while getting out of reading connection loop"), time.Now().Add(time.Second))
 				if err != nil {
 					t.logger.Warnf("Received error [%s] while writing close message", err)
 				}
+				t.logger.Info("Closing connection while going out of trigger handler")
 				t.wsconn.Close()
 			}()
 			for {
 				_, message, err := t.wsconn.ReadMessage()
-				//t.logger.Infof("Message received :", string(message)) //TODO REMOVE
 				if err != nil {
 					t.logger.Errorf("error while reading websocket message: %s", err)
 					break
 				}
-
+				t.logger.Debug("New message received...")
 				out := &Output{}
 				var content interface{}
 				if (t.config.Settings["format"] != nil && t.config.Settings["format"].(string) == "JSON") ||
@@ -177,6 +187,7 @@ func (t *Trigger) Start() error {
 				}
 
 				out.Content = content
+				out.WSconnection = t.wsconn
 
 				for _, handler := range t.tInitContext.GetHandlers() {
 					_, err1 := handler.Handle(context.Background(), out)
@@ -196,11 +207,14 @@ func (t *Trigger) Start() error {
 
 // Stop stops the trigger
 func (t *Trigger) Stop() error {
-	err := t.wsconn.WriteMessage(websocket.CloseMessage, []byte("Closing connection while stopping trigger"))
+	t.logger.Infof("Stopping Trigger %s", t.config.Id)
+	t.continuePing = false
+	err := t.wsconn.WriteControl(websocket.CloseMessage, []byte("Closing connection while stopping trigger"), time.Now().Add(time.Second))
 	if err != nil {
 		t.logger.Warnf("Error received: [%s] while sending close message when Stopping Trigger", err)
 	}
 	t.wsconn.Close()
+	defer t.logger.Info("Trigger %s Stopped", t.config.Id)
 	return nil
 }
 
@@ -287,4 +301,23 @@ func decodeCerts(certVal string, log log.Logger) ([]byte, error) {
 	//===========These blocks of code to be removed after sriharsha fixes FLOGO-2673=================================
 
 	return []byte(certVal), nil
+}
+
+func ping(connection *websocket.Conn, tr *Trigger) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		if tr.continuePing {
+			select {
+			case t := <-ticker.C:
+				tr.logger.Debugf("Sending Ping at timestamp : %v", t)
+				if err := connection.WriteControl(websocket.PingMessage, []byte("---HeartBeat---"), time.Now().Add(time.Second)); err != nil {
+					tr.logger.Errorf("error while sending ping: %v", err)
+				}
+			}
+		} else {
+			tr.logger.Debugf("stopping ping ticker for conn: %v while engine getting stopped", connection.UnderlyingConn())
+			return
+		}
+	}
 }

@@ -12,6 +12,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
@@ -37,6 +38,7 @@ func New(ctx activity.InitContext) (activity.Activity, error) {
 	act := &Activity{
 		settings:      s,
 		cachedClients: sync.Map{},
+		continuePing:  true,
 	}
 	return act, nil
 }
@@ -45,6 +47,8 @@ func New(ctx activity.InitContext) (activity.Activity, error) {
 type Activity struct {
 	settings      *Settings
 	cachedClients sync.Map
+	continuePing  bool
+	actLogger     log.Logger
 }
 
 // Metadata returns the metadata for a websocket client
@@ -54,6 +58,7 @@ func (a *Activity) Metadata() *activity.Metadata {
 
 // Eval implements api.Activity.Eval - Invokes a web socket operation
 func (a *Activity) Eval(ctx activity.Context) (done bool, err error) {
+	a.actLogger = ctx.Logger()
 	input := &Input{}
 	err = ctx.GetInputObject(input)
 	if err != nil {
@@ -119,14 +124,22 @@ func (a *Activity) Eval(ctx activity.Context) (done bool, err error) {
 				defer res.Body.Close()
 				body, err1 := ioutil.ReadAll(res.Body)
 				if err1 != nil {
-					ctx.Logger().Errorf("response code is %v error while reading response payload is %s ", res.StatusCode, err1)
+					ctx.Logger().Errorf("response code is: %v , error while reading response payload is: %s ", res.StatusCode, err1)
 				}
-				ctx.Logger().Errorf("response code is %v payload is %s , error is %s", res.StatusCode, string(body), err)
+				ctx.Logger().Errorf("response code is: %v , payload is: %s , error is: %s", res.StatusCode, string(body), err)
 			}
 			return false, err
 		}
 		a.cachedClients.Store(key, conn)
 		connection = conn
+
+		// send ping to avoid connection timeout, for newly created connection only as its goroutine
+		connection.SetPongHandler(func(msg string) error { /* ws.SetReadDeadline(time.Now().Add(pongWait)); */
+			ctx.Logger().Debugf("received pong msg from server: %s", msg)
+			return nil
+		})
+		// send ping to avoid TCI connection timeout
+		go ping(connection, a)
 	} else {
 		ctx.Logger().Debug("Reusing connection from cache")
 		connection = cachedConnection.(*websocket.Conn)
@@ -140,10 +153,12 @@ func (a *Activity) Eval(ctx activity.Context) (done bool, err error) {
 		}
 		err = connection.WriteMessage(websocket.TextMessage, message)
 		if err != nil {
+			ctx.Logger().Debug("Deleting connection from cache due to error")
+			a.cachedClients.Delete(key)
 			return false, err
 		}
 	} else {
-		return false, errors.New("Message is non configured")
+		return false, errors.New("Message is not configured")
 	}
 	return true, nil
 }
@@ -267,4 +282,45 @@ func getCerts(trustStore string) (*x509.CertPool, error) {
 		return certPool, fmt.Errorf("Failed to read trusted certificates from [%s]  After processing all files in the directory no valid trusted certs were found", trustStore)
 	}
 	return certPool, nil
+}
+
+func ping(connection *websocket.Conn, a *Activity) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		if a.continuePing {
+			select {
+			case t := <-ticker.C:
+				a.actLogger.Debugf("Sending Ping at timestamp : %v", t)
+				if err := connection.WriteControl(websocket.PingMessage, []byte("---HeartBeat---"), time.Now().Add(time.Second)); err != nil {
+					a.actLogger.Errorf("error while sending ping: %v", err)
+				}
+			}
+		} else {
+			a.actLogger.Debugf("stopping ping ticker for conn: %v while engine getting stopped", connection.UnderlyingConn())
+			return
+		}
+	}
+}
+
+func (a *Activity) Cleanup() error {
+	a.continuePing = false
+	a.cachedClients.Range(func(key, value interface{}) bool {
+		conn, ok := value.(*websocket.Conn)
+		if !ok {
+			a.actLogger.Info("value is not websocket connection type to close while activity cleanup")
+		} else {
+			err := conn.WriteControl(websocket.CloseMessage, []byte("Close connection while Activity cleanup"), time.Now().Add(time.Second))
+			if err != nil {
+				a.actLogger.Warnf("error while sending close message: %v", err)
+			}
+			err1 := conn.Close()
+			if err1 != nil {
+				a.actLogger.Infof("error while closing connection: %v", err1)
+			}
+			a.actLogger.Infof("Connection closed while activity cleanup.....")
+		}
+		return true
+	})
+	return nil
 }

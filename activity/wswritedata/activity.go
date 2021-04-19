@@ -35,12 +35,12 @@ func (a *Activity) Eval(ctx activity.Context) (done bool, err error) {
 		return false, err
 	}
 	logger := ctx.Logger()
+	if input.WSConnection == nil {
+		return false, errors.New("WSConnection is not configured")
+	}
 	conn, ok := input.WSConnection.(*websocket.Conn)
 	if !ok {
 		return false, errors.New("Configured connection is not a WebSocket Connection")
-	}
-	if conn == nil {
-		return false, errors.New("WSConnection is non configured")
 	}
 	//populate msg
 	if input.Message != nil {
@@ -48,13 +48,14 @@ func (a *Activity) Eval(ctx activity.Context) (done bool, err error) {
 		if err != nil {
 			return false, err
 		}
-		logger.Debug("writing data to websocket connection")
+		logger.Info("writing data to websocket connection")
 		err = conn.WriteMessage(websocket.TextMessage, message)
 		if err != nil {
+			logger.Errorf("Error while writing to websocket connection - %v", err)
 			return false, err
 		}
 	} else {
-		return false, errors.New("Message is non configured")
+		return false, errors.New("Message is not configured")
 	}
 	return true, nil
 }

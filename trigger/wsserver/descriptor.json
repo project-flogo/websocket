@@ -8,14 +8,14 @@
   "settings": [
     {
       "name": "port",
-      "type": "int",
+      "type": "integer",
       "required": true,
       "description": "The port to listen on"
     },
     {
       "name": "enableTLS",
       "type": "bool",
-      "description": "true - To enable TLS (Transport Layer Security), false - No TLS security"
+      "description": "True - To enable TLS (Transport Layer Security), False - No TLS security"
     },
     {
       "name": "serverCert",
@@ -30,7 +30,7 @@
     {
       "name": "enableClientAuth",
       "type": "bool",
-      "description": "true - To enable client AUTH, false - Client AUTH is not enabled"
+      "description": "True - To enable client AUTH, False - Client AUTH is not enabled"
     },
     {
       "name": "trustStore",
@@ -42,22 +42,22 @@
     {
       "name": "pathParams",
       "type": "params",
-      "description": "HTTP request path params"
+      "description": "The path parameters for the trigger"
     },
     {
       "name": "queryParams",
       "type": "params",
-      "description": "HTTP request query params"
+      "description": "The query parameters you want to receive for the flow"
     },
     {
       "name": "headers",
       "type": "params",
-      "description": "HTTP request header params. Header key gets converted in to canonical format, i.e. the first letter and any letter following a hyphen to upper case, the rest are converted to lowercase. For example, the canonical key for \"accept-encoding\" and \"host\" are \"Accept-Encoding\" and \"Host\" respectively"
+      "description": "The HTTP header you want to receive for the flow. Header key gets converted in to canonical format, i.e. the first letter and any letter following a hyphen to upper case, the rest are converted to lowercase. For example, the canonical key for \"accept-encoding\" and \"host\" are \"Accept-Encoding\" and \"Host\" respectively"
     },
     {
       "name": "content",
       "type": "any",
-      "description": "HTTP request payload"
+      "description": "Received websocket message"
     },
     {
       "name": "wsconnection",
@@ -79,14 +79,14 @@
         "name": "path",
         "type": "string",
         "required": true,
-        "description": "URL path to be registered with handler"
+        "description": "The path you have configured. Use {} to configure path parameters. e.g. /users/{id}"
       },
       {
         "name": "mode",
         "type": "string",
         "required": true,
         "allowed": ["Data", "Connection"],
-        "description": "\"Data\" Mode for output with content and \"Connection\" Mode for output with websocket connection"
+        "description": "\"Data\" Mode for output with content and websocket connection both, \"Connection\" Mode for output with websocket connection only."
       }
     ]
   }
