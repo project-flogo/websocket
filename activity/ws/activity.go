@@ -48,6 +48,7 @@ type Activity struct {
 	settings      *Settings
 	cachedClients sync.Map
 	continuePing  bool
+	actLogger     log.Logger
 }
 
 // Metadata returns the metadata for a websocket client
@@ -55,11 +56,9 @@ func (a *Activity) Metadata() *activity.Metadata {
 	return activityMd
 }
 
-var actLogger log.Logger
-
 // Eval implements api.Activity.Eval - Invokes a web socket operation
 func (a *Activity) Eval(ctx activity.Context) (done bool, err error) {
-	actLogger = ctx.Logger()
+	a.actLogger = ctx.Logger()
 	input := &Input{}
 	err = ctx.GetInputObject(input)
 	if err != nil {
@@ -292,13 +291,13 @@ func ping(connection *websocket.Conn, a *Activity) {
 		if a.continuePing {
 			select {
 			case t := <-ticker.C:
-				actLogger.Debugf("Sending Ping at timestamp : %v", t)
+				a.actLogger.Debugf("Sending Ping at timestamp : %v", t)
 				if err := connection.WriteControl(websocket.PingMessage, []byte("---HeartBeat---"), time.Now().Add(time.Second)); err != nil {
-					actLogger.Errorf("error while sending ping: %v", err)
+					a.actLogger.Errorf("error while sending ping: %v", err)
 				}
 			}
 		} else {
-			actLogger.Debugf("stopping ping ticker for conn: %v while engine getting stopped", connection.UnderlyingConn())
+			a.actLogger.Debugf("stopping ping ticker for conn: %v while engine getting stopped", connection.UnderlyingConn())
 			return
 		}
 	}
@@ -309,17 +308,17 @@ func (a *Activity) Cleanup() error {
 	a.cachedClients.Range(func(key, value interface{}) bool {
 		conn, ok := value.(*websocket.Conn)
 		if !ok {
-			actLogger.Info("value is not websocket connection type to close while activity cleanup")
+			a.actLogger.Info("value is not websocket connection type to close while activity cleanup")
 		} else {
 			err := conn.WriteControl(websocket.CloseMessage, []byte("Close connection while Activity cleanup"), time.Now().Add(time.Second))
 			if err != nil {
-				actLogger.Warnf("error while sending close message: %v", err)
+				a.actLogger.Warnf("error while sending close message: %v", err)
 			}
 			err1 := conn.Close()
 			if err1 != nil {
-				actLogger.Infof("error while closing connection: %v", err1)
+				a.actLogger.Infof("error while closing connection: %v", err1)
 			}
-			actLogger.Infof("Connection closed while activity cleanup.....")
+			a.actLogger.Infof("Connection closed while activity cleanup.....")
 		}
 		return true
 	})

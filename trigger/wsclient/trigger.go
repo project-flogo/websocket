@@ -120,8 +120,8 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 	} else {
 		dialer = *websocket.DefaultDialer
 	}
-	t.logger.Infof("[ %s ] dialing websocket endpoint[%s]...", t.config.Id, urlstring)
-	t.logger.Debugf("[ %s ] dialing websocket endpoint with headers[%s]...", t.config.Id, header)
+	t.logger.Infof("[ %s ] dialing websocket endpoint [%s]...", t.config.Id, urlstring)
+	t.logger.Debugf("[ %s ] dialing websocket endpoint with headers [%s]...", t.config.Id, header)
 
 	conn, res, err := dialer.Dial(urlstring, header)
 	if err != nil {

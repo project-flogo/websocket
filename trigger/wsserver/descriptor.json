@@ -8,7 +8,7 @@
   "settings": [
     {
       "name": "port",
-      "type": "int",
+      "type": "integer",
       "required": true,
       "description": "The port to listen on"
     },
