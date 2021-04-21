@@ -270,7 +270,11 @@ func newActionHandler(rt *Trigger, handlerwrapper *HandlerWrapper, mode string) 
 				err1 := handlerRoutine(message, handlerwrapper.handler, out)
 				if err1 != nil {
 					if strings.HasPrefix(err1.Error(), "JSON Message decoding Failed") {
-						rt.logger.Errorf("Received message is not inline with configured JSON Schema : ", err1.Error())
+						rt.logger.Errorf("Received message is not inline with configured JSON Schema : ", err1)
+						err := conn.WriteControl(websocket.CloseMessage, []byte("Received message is not inline with configured JSON Schema: "+err1.Error()), time.Now().Add(time.Second))
+						if err != nil {
+							rt.logger.Warnf("Received error [%s] while writing close message as Received message is not inline with configured JSON Schema", err.Error())
+						}
 						break
 					}
 					rt.logger.Errorf("Error while processing message : ", err1.Error())
