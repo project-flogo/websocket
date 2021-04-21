@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -294,6 +295,25 @@ func ping(connection *websocket.Conn, a *Activity) {
 				a.actLogger.Debugf("Sending Ping at timestamp : %v", t)
 				if err := connection.WriteControl(websocket.PingMessage, []byte("---HeartBeat---"), time.Now().Add(time.Second)); err != nil {
 					a.actLogger.Errorf("error while sending ping: %v", err)
+					var ErrCloseSent = errors.New("websocket: close sent")
+					if err != ErrCloseSent {
+						e, ok := err.(net.Error);
+						if (!ok || !e.Temporary() ){
+							a.actLogger.Warnf("stopping ping ticker for conn: %v as received non temporary error while sending ping: %s ", connection.UnderlyingConn(), err.Error())
+							if (a.continuePing){ // remove connection from cache only if engine is not in shutting down state
+								a.cachedClients.Range(func(key, value interface{}) bool {
+									conn, ok := value.(*websocket.Conn)
+									if ok && (connection == conn){
+										a.actLogger.Warnf("Removing broken connection from cache: [%v] for key: [%s]", conn.UnderlyingConn(), key)
+										a.cachedClients.Delete(key)
+										return false
+									}
+									return true
+								})
+							}
+							return
+						}
+					}
 				}
 			}
 		} else {

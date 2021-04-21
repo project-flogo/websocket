@@ -269,16 +269,24 @@ func newActionHandler(rt *Trigger, handlerwrapper *HandlerWrapper, mode string) 
 				}
 				err1 := handlerRoutine(message, handlerwrapper.handler, out)
 				if err1 != nil {
+					if strings.HasPrefix(err1.Error(), "JSON Message decoding Failed") {
+						rt.logger.Errorf("Received message is not inline with configured JSON Schema : ", err1)
+						err := conn.WriteControl(websocket.CloseMessage, []byte("Received message is not inline with configured JSON Schema: "+err1.Error()), time.Now().Add(time.Second))
+						if err != nil {
+							rt.logger.Warnf("Received error [%s] while writing close message as Received message is not inline with configured JSON Schema", err.Error())
+						}
+						break
+					}
 					rt.logger.Errorf("Error while processing message : ", err1.Error())
 				}
 			}
-			rt.logger.Infof("stopped listening to websocket endpoint")
+			rt.logger.Infof("Getting out of listening websocket connection in Data Mode")
 		case ModeConnection:
 			_, err := handlerwrapper.handler.Handle(context.Background(), out)
 			if err != nil {
 				rt.logger.Errorf("Run action  failed [%s] ", err)
 			}
-			rt.logger.Infof("stopped listening to websocket endpoint")
+			rt.logger.Infof("Getting out of handling websocket connection in Connection Mode")
 		}
 	}
 }
@@ -287,7 +295,10 @@ func handlerRoutine(message []byte, handler trigger.Handler, out *Output) error 
 	var content interface{}
 	if (handler.Settings()["format"] != nil && handler.Settings()["format"].(string) == "JSON") ||
 		(handler.Settings()["format"] == nil && isJSON(message)) {
-		json.NewDecoder(bytes.NewBuffer(message)).Decode(&content)
+		err := json.NewDecoder(bytes.NewBuffer(message)).Decode(&content)
+		if err != nil {
+			return fmt.Errorf("JSON Message decoding Failed [%s] ", err)
+		}
 	} else {
 		content = string(message)
 
@@ -543,6 +554,14 @@ func ping(connection *websocket.Conn, tr *Trigger) {
 				tr.logger.Debugf("Sending Ping at timestamp : %v", t)
 				if err := connection.WriteControl(websocket.PingMessage, []byte("---HeartBeat---"), time.Now().Add(time.Second)); err != nil {
 					tr.logger.Errorf("error while sending ping: %v", err)
+					var ErrCloseSent = errors.New("websocket: close sent")
+					if err != ErrCloseSent {
+						e, ok := err.(net.Error)
+						if !ok || !e.Temporary() {
+							tr.logger.Debugf("stopping ping ticker for conn: %v as received non temporary error while sending ping: %s ", connection.UnderlyingConn(), err.Error())
+							return
+						}
+					}
 				}
 			}
 		} else {

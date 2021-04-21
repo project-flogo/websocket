@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -71,14 +72,26 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 	header := make(http.Header)
 	if len(headers) > 0 {
 		for key, val := range headers {
-			header[key] = []string{val}
+			splittedSlice := strings.Split(val, ",")
+			var hvalues []string
+			for _, val := range splittedSlice {
+				if len(strings.TrimSpace(val)) > 0 {
+					hvalues = append(hvalues, val)
+				}
+			}
+			header[key] = hvalues
 		}
 	}
 	// populate queryparam
 	if len(queryParams) > 0 {
 		qp := url.Values{}
 		for key, val := range queryParams {
-			qp.Add(key, val)
+			splittedSlice := strings.Split(val, ",")
+			for _, splittedval := range splittedSlice {
+				if len(strings.TrimSpace(splittedval)) > 0 {
+					qp.Add(key, splittedval)
+				}
+			}
 		}
 		urlstring = urlstring + "?" + qp.Encode()
 	}
@@ -313,6 +326,14 @@ func ping(connection *websocket.Conn, tr *Trigger) {
 				tr.logger.Debugf("Sending Ping at timestamp : %v", t)
 				if err := connection.WriteControl(websocket.PingMessage, []byte("---HeartBeat---"), time.Now().Add(time.Second)); err != nil {
 					tr.logger.Errorf("error while sending ping: %v", err)
+					var ErrCloseSent = errors.New("websocket: close sent")
+					if err != ErrCloseSent {
+						e, ok := err.(net.Error);
+						if (!ok || !e.Temporary() ){
+							tr.logger.Debugf("stopping ping ticker for conn: %v as received non temporary error while sending ping: %s ", connection.UnderlyingConn(), err.Error())
+							return
+						}
+					}
 				}
 			}
 		} else {
