@@ -124,7 +124,11 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 						return err
 					}
 					certPool := x509.NewCertPool()
-					certPool.AppendCertsFromPEM(rootCAbytes)
+					certsAdded := certPool.AppendCertsFromPEM(rootCAbytes)
+					if !certsAdded {
+						t.logger.Error("Unsupported certificate found. It must be a valid PEM certificate.")
+						return fmt.Errorf("Unsupported certificate found. It must be a valid PEM certificate.")
+					}
 					tlsconfig.RootCAs = certPool
 				}
 			}

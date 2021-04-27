@@ -107,7 +107,11 @@ func (a *Activity) Eval(ctx activity.Context) (done bool, err error) {
 							return false, err
 						}
 						certPool := x509.NewCertPool()
-						certPool.AppendCertsFromPEM(rootCAbytes)
+						certsAdded := certPool.AppendCertsFromPEM(rootCAbytes)
+						if !certsAdded {
+							ctx.Logger().Error("Unsupported certificate found. It must be a valid PEM certificate.")
+							return false, activity.NewError("Unsupported certificate found. It must be a valid PEM certificate.", "", nil)
+						}
 						tlsconfig.RootCAs = certPool
 					}
 				}
@@ -196,7 +200,8 @@ func getHeaders(ctx activity.Context, param *Parameters) http.Header {
 		for _, v := range param.Headers {
 			//Any input should oeverride exist header
 			// To avoid canonicalization of header name, adding headers directly to the request header map instead of using Add/Set.
-			header[v.Name] = []string{v.ToString(ctx.Logger())}
+			vSlice := strings.Split(v.ToString(ctx.Logger()), ",")
+			header[v.Name] = vSlice
 		}
 	}
 	return header
@@ -297,13 +302,13 @@ func ping(connection *websocket.Conn, a *Activity) {
 					a.actLogger.Errorf("error while sending ping: %v", err)
 					var ErrCloseSent = errors.New("websocket: close sent")
 					if err != ErrCloseSent {
-						e, ok := err.(net.Error);
-						if (!ok || !e.Temporary() ){
+						e, ok := err.(net.Error)
+						if !ok || !e.Temporary() {
 							a.actLogger.Warnf("stopping ping ticker for conn: %v as received non temporary error while sending ping: %s ", connection.UnderlyingConn(), err.Error())
-							if (a.continuePing){ // remove connection from cache only if engine is not in shutting down state
+							if a.continuePing { // remove connection from cache only if engine is not in shutting down state
 								a.cachedClients.Range(func(key, value interface{}) bool {
 									conn, ok := value.(*websocket.Conn)
-									if ok && (connection == conn){
+									if ok && (connection == conn) {
 										a.actLogger.Warnf("Removing broken connection from cache: [%v] for key: [%s]", conn.UnderlyingConn(), key)
 										a.cachedClients.Delete(key)
 										return false

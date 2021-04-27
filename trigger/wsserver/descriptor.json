@@ -1,9 +1,9 @@
 {
   "name": "wsserver",
   "type": "flogo:trigger",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "title": "Websocket Server",
-  "description": "Websocket server starts a server",
+  "description": "Websocket server listens for connection request from the client",
   "homepage": "https://github.com/project-flogo/websocket/tree/master/trigger/wsserver",
   "settings": [
     {
