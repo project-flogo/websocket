@@ -304,12 +304,12 @@ func ping(connection *websocket.Conn, a *Activity) {
 					if err != ErrCloseSent {
 						e, ok := err.(net.Error)
 						if !ok || !e.Temporary() {
-							a.actLogger.Warnf("stopping ping ticker for conn: %v as received non temporary error while sending ping: %s ", connection.UnderlyingConn(), err.Error())
+							a.actLogger.Warnf("stopping ping ticker for conn: %p as received non temporary error while sending ping: %s ", connection, err.Error())
 							if a.continuePing { // remove connection from cache only if engine is not in shutting down state
 								a.cachedClients.Range(func(key, value interface{}) bool {
 									conn, ok := value.(*websocket.Conn)
 									if ok && (connection == conn) {
-										a.actLogger.Warnf("Removing broken connection from cache: [%v] for key: [%s]", conn.UnderlyingConn(), key)
+										a.actLogger.Warnf("Removing broken connection from cache: [%p] for key: [%s]", conn, key)
 										a.cachedClients.Delete(key)
 										return false
 									}
@@ -322,7 +322,7 @@ func ping(connection *websocket.Conn, a *Activity) {
 				}
 			}
 		} else {
-			a.actLogger.Debugf("stopping ping ticker for conn: %v while engine getting stopped", connection.UnderlyingConn())
+			a.actLogger.Debugf("stopping ping ticker for conn: %p while engine getting stopped", connection)
 			return
 		}
 	}
