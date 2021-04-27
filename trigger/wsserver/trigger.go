@@ -558,14 +558,14 @@ func ping(connection *websocket.Conn, tr *Trigger) {
 					if err != ErrCloseSent {
 						e, ok := err.(net.Error)
 						if !ok || !e.Temporary() {
-							tr.logger.Debugf("stopping ping ticker for conn: %v as received non temporary error while sending ping: %s ", connection.UnderlyingConn(), err.Error())
+							tr.logger.Debugf("stopping ping ticker for conn: %p as received non temporary error while sending ping: %s ", connection, err.Error())
 							return
 						}
 					}
 				}
 			}
 		} else {
-			tr.logger.Debugf("stopping ping ticker for conn: %v while engine getting stopped", connection.UnderlyingConn())
+			tr.logger.Debugf("stopping ping ticker for conn: %p while engine getting stopped", connection)
 			return
 		}
 	}

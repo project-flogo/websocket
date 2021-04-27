@@ -332,16 +332,16 @@ func ping(connection *websocket.Conn, tr *Trigger) {
 					tr.logger.Errorf("error while sending ping: %v", err)
 					var ErrCloseSent = errors.New("websocket: close sent")
 					if err != ErrCloseSent {
-						e, ok := err.(net.Error);
-						if (!ok || !e.Temporary() ){
-							tr.logger.Debugf("stopping ping ticker for conn: %v as received non temporary error while sending ping: %s ", connection.UnderlyingConn(), err.Error())
+						e, ok := err.(net.Error)
+						if !ok || !e.Temporary() {
+							tr.logger.Debugf("stopping ping ticker for conn: %p as received non temporary error while sending ping: %s ", connection, err.Error())
 							return
 						}
 					}
 				}
 			}
 		} else {
-			tr.logger.Debugf("stopping ping ticker for conn: %v while engine getting stopped", connection.UnderlyingConn())
+			tr.logger.Debugf("stopping ping ticker for conn: %p while engine getting stopped", connection)
 			return
 		}
 	}
