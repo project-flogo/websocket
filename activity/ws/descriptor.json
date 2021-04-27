@@ -1,9 +1,9 @@
 {
   "name": "wsclient",
   "type": "flogo:activity",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "title": "Websocket Client",
-  "description": "Websocket Client",
+  "description": "Websocket Client to make connection and send data to Websocket Server",
   "homepage": "https://github.com/project-flogo/websocket/tree/master/activity/ws",
   "settings": [
     {

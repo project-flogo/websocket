@@ -1,9 +1,9 @@
 {
   "name": "wssubscriber",
   "type": "flogo:trigger",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "title": "Websocket Subscriber",
-  "description": "Websocket Subscriber connects to a websocket server",
+  "description": "Websocket Subscriber connects to a websocket server and reads the data over connection",
   "homepage": "https://github.com/project-flogo/websocket/tree/master/trigger/wsclient",
   "settings": [
     {
