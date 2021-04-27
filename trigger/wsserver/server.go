@@ -80,7 +80,8 @@ func (s *Server) Start() error {
 		//TLS is enabled, load server certificate & key files
 		s.logger.Info("Reading certificates")
 		var cer tls.Certificate
-		if strings.HasPrefix(s.serverKey, "{") || strings.Contains(s.serverKey, ",") || strings.HasPrefix(s.serverKey, "-----") {
+		if (strings.HasPrefix(s.serverKey, "{") || isBase64Encoded(s.serverKey)) &&
+			(strings.HasPrefix(s.serverCert, "{") || isBase64Encoded(s.serverCert)) {
 			// certfile uploaded in FE via filepicker, or keys configured via app property in base64 encoded, or raw form
 			privateKey, err := decodeCerts(s.serverKey, s.logger)
 			if err != nil {
@@ -282,7 +283,8 @@ func decodeCerts(certVal string, tlogger log.Logger) ([]byte, error) {
 	}
 
 	//if the certificate comes from application properties need to check whether that it contains , ans encoding
-	index := strings.IndexAny(certVal, ",")
+	return base64.StdEncoding.DecodeString(certVal)
+	/*index := strings.IndexAny(certVal, ",")
 
 	if index > -1 {
 		//some encoding is there
@@ -306,5 +308,13 @@ func decodeCerts(certVal string, tlogger log.Logger) ([]byte, error) {
 	certVal = first + "\n" + middle + "\n" + last
 	//===========These blocks of code to be removed after sriharsha fixes FLOGO-2673=================================
 
-	return []byte(certVal), nil
+	return []byte(certVal), nil */
+}
+
+func isBase64Encoded(certValue string) bool {
+	_, err := base64.StdEncoding.DecodeString(certValue)
+	if err != nil {
+		return false
+	}
+	return true
 }
