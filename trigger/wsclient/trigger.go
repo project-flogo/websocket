@@ -137,7 +137,9 @@ func populateConnectionParams(t *Trigger) error {
 				}
 			}
 		}
-		dialer = websocket.Dialer{TLSClientConfig: tlsconfig}
+		dialer = websocket.Dialer{TLSClientConfig: tlsconfig,
+			HandshakeTimeout: 45 * time.Second,
+		} // as defaultDialer
 	} else {
 		dialer = *websocket.DefaultDialer
 	}
@@ -160,7 +162,6 @@ func connect(t *Trigger) error {
 			}
 			t.logger.Errorf("response code is: %v , payload is: %s , error is: %s", res.StatusCode, string(body), err)
 		}
-		// t.wsconn = nil
 		return fmt.Errorf("error while connecting to websocket endpoint[%s] - %s", t.urlstring, err)
 	}
 	t.mu.Lock()
@@ -173,8 +174,6 @@ type retry struct {
 	attempts         int64
 	maxDelay         time.Duration
 	maxReconAttempts int64
-	// err              error
-	// wg                sync.WaitGroup
 }
 
 // Initialize initializes the trigger
@@ -185,27 +184,19 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 		return err
 	}
 	err1 := connect(t)
-	if err1 != nil { // TODO do we need to put retry logic here also
+	if err1 != nil {
 		re := &retry{
 			attempts:         0,
-			maxDelay:         time.Duration(30) * time.Second,
-			maxReconAttempts: int64(3),
+			maxDelay:         time.Duration(t.settings.AutoReconnectMaxDelay) * time.Second,
+			maxReconAttempts: int64(t.settings.AutoReconnectAttempts),
 		}
 		err2 := re.closeAndReconnect(t)
 		if err2 != nil {
 			return err2
 		}
 	}
-
 	// set ponghanlder to print the received pong message from server
-	t.wsconn.SetPongHandler(func(msg string) error { /* ws.SetReadDeadline(time.Now().Add(pongWait)); */
-		ctx.Logger().Debugf("received pong msg from server: %s", msg)
-		return nil
-	})
-	// send ping to avoid TCI connection timeout
-	pingdone := make(chan bool)
-	go ping(t, pingdone)
-	t.pingdone = pingdone
+	startPingSetPongHandler(t)
 	t.tInitContext = ctx
 	return nil
 }
@@ -224,8 +215,13 @@ func (r *retry) closeAndReconnect(t *Trigger) error {
 func close(t *Trigger) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.pingdone <- true
 	if t.wsconn != nil {
+		select {
+		case t.pingdone <- true:
+			t.logger.Debug("Sending pingdone signal to deactivate ping service for this connection")
+		default:
+			t.logger.Debug("No active ping service so signal not sent")
+		}
 		t.wsconn.Close()
 	}
 }
@@ -238,8 +234,8 @@ func (r *retry) retryConnection(t *Trigger) error {
 			dur = r.maxDelay
 		}
 		time.Sleep(dur)
-		t.logger.Infof("TCM Connection retry attempts [%d]", r.attempts)
 		r.attempts++
+		t.logger.Infof("******Websocket Connection retry attempt [%d]", r.attempts)
 		if e := connect(t); e != nil {
 			if r.attempts == r.maxReconAttempts {
 				return e
@@ -255,7 +251,6 @@ func (r *retry) retryConnection(t *Trigger) error {
 func (t *Trigger) Start() error {
 	if t.wsconn != nil {
 		go func() {
-
 			defer func() {
 				if t.wsconn != nil {
 					err := t.wsconn.WriteControl(websocket.CloseMessage, []byte("Sending close message while getting out of reading connection loop"), time.Now().Add(time.Second))
@@ -272,22 +267,16 @@ func (t *Trigger) Start() error {
 					t.logger.Errorf("error while reading websocket message: %s", err)
 					re := &retry{
 						attempts:         0,
-						maxDelay:         time.Duration(30) * time.Second,
-						maxReconAttempts: int64(3),
+						maxDelay:         time.Duration(t.settings.AutoReconnectMaxDelay) * time.Second,
+						maxReconAttempts: int64(t.settings.AutoReconnectAttempts),
 					}
+					t.logger.Debug("going to retry for connection")
 					err2 := re.closeAndReconnect(t)
 					if err2 != nil {
-						t.logger.Errorf("Connection error after max retiry : %s", err2)
+						t.logger.Errorf("Connection error after max retry : %s", err2)
 						break
 					} else {
-						t.wsconn.SetPongHandler(func(msg string) error { /* ws.SetReadDeadline(time.Now().Add(pongWait)); */
-							t.tInitContext.Logger().Debugf("received pong msg from server: %s", msg)
-							return nil
-						})
-						// send ping to avoid TCI connection timeout
-						pingdone := make(chan bool)
-						go ping(t, pingdone)
-						t.pingdone = pingdone
+						startPingSetPongHandler(t)
 						continue
 					}
 				}
@@ -320,6 +309,19 @@ func (t *Trigger) Start() error {
 		return errors.New("Websocket Connection not initialized")
 	}
 	return nil
+}
+
+func startPingSetPongHandler(t *Trigger) {
+	if t.wsconn != nil {
+		t.wsconn.SetPongHandler(func(msg string) error {
+			t.tInitContext.Logger().Debugf("received pong msg from server: %s", msg)
+			return nil
+		})
+		// send ping to avoid TCI connection timeout
+		pingdone := make(chan bool)
+		go ping(t, pingdone)
+		t.pingdone = pingdone
+	}
 }
 
 // Stop stops the trigger
@@ -421,6 +423,7 @@ func decodeCerts(certVal string, log log.Logger) ([]byte, error) {
 }
 
 func ping(tr *Trigger, done chan bool) {
+	tr.logger.Debugf("starting ping ticker for conn: %p ", tr.wsconn)
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	for {
