@@ -33,6 +33,18 @@
       "name": "headers",
       "type": "params",
       "description": "HTTP request header params. Header key gets converted in to canonical format, i.e. the first letter and any letter following a hyphen to upper case, the rest are converted to lowercase. For example, the canonical key for \"accept-encoding\" and \"host\" are \"Accept-Encoding\" and \"Host\" respectively"
+    },
+    {
+      "name": "autoReconnectAttempts",
+      "type": "integer",
+      "required": true,
+      "description": "Specifies the number of times the client trigger attempts to automatically reconnect to the server following a loss of connection"
+    },
+    {
+      "name": "autoReconnectMaxDelay",
+      "type": "integer",
+      "required": true,
+      "description": "Determines the maximum delay between auto reconnect attempts in seconds"
     }
   ],
   "output": [

@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/project-flogo/core/data/metadata"
@@ -50,6 +51,11 @@ type Trigger struct {
 	config       *trigger.Config
 	tInitContext trigger.InitContext
 	continuePing bool
+	dialer       websocket.Dialer
+	urlstring    string
+	header       http.Header
+	mu           sync.Mutex
+	pingdone     chan bool
 }
 
 // New implements trigger.Factory.New
@@ -62,9 +68,7 @@ func (*Factory) New(config *trigger.Config) (trigger.Trigger, error) {
 	return &Trigger{settings: s, config: config, continuePing: true}, nil
 }
 
-// Initialize initializes the trigger
-func (t *Trigger) Initialize(ctx trigger.InitContext) error {
-	t.logger = ctx.Logger()
+func populateConnectionParams(t *Trigger) error {
 	headers := t.settings.Headers
 	queryParams := t.settings.QueryParams
 	urlstring := t.settings.URL
@@ -133,36 +137,67 @@ func (t *Trigger) Initialize(ctx trigger.InitContext) error {
 				}
 			}
 		}
-		dialer = websocket.Dialer{TLSClientConfig: tlsconfig}
+		dialer = websocket.Dialer{TLSClientConfig: tlsconfig,
+			HandshakeTimeout: 45 * time.Second,
+		} // as defaultDialer
 	} else {
 		dialer = *websocket.DefaultDialer
 	}
-	t.logger.Infof("[ %s ] dialing websocket endpoint [%s]...", t.config.Id, urlstring)
-	t.logger.Debugf("[ %s ] dialing websocket endpoint with headers [%s]...", t.config.Id, header)
+	t.dialer = dialer
+	t.urlstring = urlstring
+	t.header = header
+	return nil
+}
 
-	conn, res, err := dialer.Dial(urlstring, header)
+func connect(t *Trigger) error {
+	t.logger.Infof("[ %s ] dialing websocket endpoint [%s]...", t.config.Id, t.urlstring)
+	t.logger.Debugf("[ %s ] dialing websocket endpoint with headers [%s]...", t.config.Id, t.header)
+	conn, res, err := t.dialer.Dial(t.urlstring, t.header)
 	if err != nil {
 		if res != nil {
 			defer res.Body.Close()
 			body, err1 := ioutil.ReadAll(res.Body)
 			if err1 != nil {
-				ctx.Logger().Errorf("response code is: %v , error while reading response payload is: %s ", res.StatusCode, err1)
+				t.logger.Errorf("response code is: %v , error while reading response payload is: %s ", res.StatusCode, err1)
 			}
 			t.logger.Errorf("response code is: %v , payload is: %s , error is: %s", res.StatusCode, string(body), err)
 		}
-		return fmt.Errorf("error while connecting to websocket endpoint[%s] - %s", urlstring, err)
+		return fmt.Errorf("error while connecting to websocket endpoint[%s] - %s", t.urlstring, err)
 	}
-
+	t.mu.Lock()
 	t.wsconn = conn
-	// set ponghanlder to print the received pong message from server
-	conn.SetPongHandler(func(msg string) error { /* ws.SetReadDeadline(time.Now().Add(pongWait)); */
-		ctx.Logger().Debugf("received pong msg from server: %s", msg)
-		return nil
-	})
-	// send ping to avoid TCI connection timeout
-	go ping(conn, t)
-	t.tInitContext = ctx
+	t.mu.Unlock()
+	return nil
+}
 
+type retry struct {
+	attempts         int64
+	maxDelay         time.Duration
+	maxReconAttempts int64
+}
+
+// Initialize initializes the trigger
+func (t *Trigger) Initialize(ctx trigger.InitContext) error {
+	t.logger = ctx.Logger()
+	err := populateConnectionParams(t)
+	if err != nil {
+		return err
+	}
+	err1 := connect(t)
+	if err1 != nil {
+		re := &retry{
+			attempts:         0,
+			maxDelay:         time.Duration(t.settings.AutoReconnectMaxDelay) * time.Second,
+			maxReconAttempts: int64(t.settings.AutoReconnectAttempts),
+		}
+		err2 := re.closeAndReconnect(t)
+		if err2 != nil {
+			return err2
+		}
+	}
+	// set ponghanlder to print the received pong message from server
+	startPingSetPongHandler(t)
+	t.tInitContext = ctx
 	return nil
 }
 
@@ -171,23 +206,79 @@ func isJSON(str []byte) bool {
 	return json.Unmarshal(str, &js) == nil
 }
 
+func (r *retry) closeAndReconnect(t *Trigger) error {
+	close(t)
+	e := r.retryConnection(t)
+	return e
+}
+
+func close(t *Trigger) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.wsconn != nil {
+		select {
+		case t.pingdone <- true:
+			t.logger.Debug("Sending pingdone signal to deactivate ping service for this connection")
+		default:
+			t.logger.Debug("No active ping service so signal not sent")
+		}
+		t.wsconn.Close()
+	}
+}
+
+func (r *retry) retryConnection(t *Trigger) error {
+	if r.attempts < r.maxReconAttempts {
+		// exponential backoff truncated to max delay
+		dur := time.Duration(r.attempts*2) * time.Second
+		if dur > r.maxDelay {
+			dur = r.maxDelay
+		}
+		time.Sleep(dur)
+		r.attempts++
+		t.logger.Infof("******Websocket Connection retry attempt [%d]", r.attempts)
+		if e := connect(t); e != nil {
+			if r.attempts == r.maxReconAttempts {
+				return e
+			} else {
+				return r.retryConnection(t)
+			}
+		}
+	}
+	return nil
+}
+
 // Start starts the trigger
 func (t *Trigger) Start() error {
 	if t.wsconn != nil {
 		go func() {
 			defer func() {
-				err := t.wsconn.WriteControl(websocket.CloseMessage, []byte("Sending close message while getting out of reading connection loop"), time.Now().Add(time.Second))
-				if err != nil {
-					t.logger.Warnf("Received error [%s] while writing close message", err)
+				if t.wsconn != nil {
+					err := t.wsconn.WriteControl(websocket.CloseMessage, []byte("Sending close message while getting out of reading connection loop"), time.Now().Add(time.Second))
+					if err != nil {
+						t.logger.Warnf("Received error [%s] while writing close message", err)
+					}
+					t.logger.Info("Closing connection while going out of trigger handler")
+					t.wsconn.Close()
 				}
-				t.logger.Info("Closing connection while going out of trigger handler")
-				t.wsconn.Close()
 			}()
 			for {
 				_, message, err := t.wsconn.ReadMessage()
 				if err != nil {
 					t.logger.Errorf("error while reading websocket message: %s", err)
-					break
+					re := &retry{
+						attempts:         0,
+						maxDelay:         time.Duration(t.settings.AutoReconnectMaxDelay) * time.Second,
+						maxReconAttempts: int64(t.settings.AutoReconnectAttempts),
+					}
+					t.logger.Debug("going to retry for connection")
+					err2 := re.closeAndReconnect(t)
+					if err2 != nil {
+						t.logger.Errorf("Connection error after max retry : %s", err2)
+						break
+					} else {
+						startPingSetPongHandler(t)
+						continue
+					}
 				}
 				t.logger.Debug("New message received...")
 				out := &Output{}
@@ -202,10 +293,8 @@ func (t *Trigger) Start() error {
 				} else {
 					content = string(message)
 				}
-
 				out.Content = content
 				out.WSconnection = t.wsconn
-
 				for _, handler := range t.tInitContext.GetHandlers() {
 					_, err1 := handler.Handle(context.Background(), out)
 					if err1 != nil {
@@ -220,6 +309,19 @@ func (t *Trigger) Start() error {
 		return errors.New("Websocket Connection not initialized")
 	}
 	return nil
+}
+
+func startPingSetPongHandler(t *Trigger) {
+	if t.wsconn != nil {
+		t.wsconn.SetPongHandler(func(msg string) error {
+			t.tInitContext.Logger().Debugf("received pong msg from server: %s", msg)
+			return nil
+		})
+		// send ping to avoid TCI connection timeout
+		pingdone := make(chan bool)
+		go ping(t, pingdone)
+		t.pingdone = pingdone
+	}
 }
 
 // Stop stops the trigger
@@ -320,7 +422,8 @@ func decodeCerts(certVal string, log log.Logger) ([]byte, error) {
 	return []byte(certVal), nil
 }
 
-func ping(connection *websocket.Conn, tr *Trigger) {
+func ping(tr *Trigger, done chan bool) {
+	tr.logger.Debugf("starting ping ticker for conn: %p ", tr.wsconn)
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -328,20 +431,23 @@ func ping(connection *websocket.Conn, tr *Trigger) {
 			select {
 			case t := <-ticker.C:
 				tr.logger.Debugf("Sending Ping at timestamp : %v", t)
-				if err := connection.WriteControl(websocket.PingMessage, []byte("---HeartBeat---"), time.Now().Add(time.Second)); err != nil {
+				if err := tr.wsconn.WriteControl(websocket.PingMessage, []byte("---HeartBeat---"), time.Now().Add(time.Second)); err != nil {
 					tr.logger.Errorf("error while sending ping: %v", err)
 					var ErrCloseSent = errors.New("websocket: close sent")
 					if err != ErrCloseSent {
 						e, ok := err.(net.Error)
 						if !ok || !e.Temporary() {
-							tr.logger.Debugf("stopping ping ticker for conn: %p as received non temporary error while sending ping: %s ", connection, err.Error())
+							tr.logger.Debugf("stopping ping ticker for conn: %p as received non temporary error while sending ping: %s ", tr.wsconn, err.Error())
 							return
 						}
 					}
 				}
+			case <-done:
+				tr.logger.Debugf("stopping ping ticker for conn: %p as seems connection being releaved", tr.wsconn)
+				return
 			}
 		} else {
-			tr.logger.Debugf("stopping ping ticker for conn: %p while engine getting stopped", connection)
+			tr.logger.Debugf("stopping ping ticker for conn: %p while engine getting stopped", tr.wsconn)
 			return
 		}
 	}
