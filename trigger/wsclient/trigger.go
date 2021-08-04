@@ -65,6 +65,12 @@ func (*Factory) New(config *trigger.Config) (trigger.Trigger, error) {
 	if err != nil {
 		return nil, err
 	}
+	if _, ok := config.Settings["AutoReconnectAttempts"]; !ok {
+		s.AutoReconnectAttempts = 15
+	}
+	if _, ok := config.Settings["AutoReconnectMaxDelay"]; !ok {
+		s.AutoReconnectAttempts = 30
+	}
 	return &Trigger{settings: s, config: config, continuePing: true}, nil
 }
 
@@ -253,18 +259,24 @@ func (t *Trigger) Start() error {
 		go func() {
 			defer func() {
 				if t.wsconn != nil {
-					err := t.wsconn.WriteControl(websocket.CloseMessage, []byte("Sending close message while getting out of reading connection loop"), time.Now().Add(time.Second))
+					text := []byte("Sending close message while getting out of reading connection loop")
+					message := websocket.FormatCloseMessage(websocket.CloseGoingAway, string(text))
+					err := t.wsconn.WriteControl(websocket.CloseMessage, message, time.Now().Add(time.Second))
 					if err != nil {
 						t.logger.Warnf("Received error [%s] while writing close message", err)
 					}
 					t.logger.Info("Closing connection while going out of trigger handler")
-					t.wsconn.Close()
+					//t.wsconn.Close()
+					close(t)
 				}
 			}()
 			for {
 				_, message, err := t.wsconn.ReadMessage()
 				if err != nil {
 					t.logger.Errorf("error while reading websocket message: %s", err)
+					if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+						break
+					}
 					re := &retry{
 						attempts:         0,
 						maxDelay:         time.Duration(t.settings.AutoReconnectMaxDelay) * time.Second,
@@ -328,7 +340,9 @@ func startPingSetPongHandler(t *Trigger) {
 func (t *Trigger) Stop() error {
 	t.logger.Infof("Stopping Trigger %s", t.config.Id)
 	t.continuePing = false
-	err := t.wsconn.WriteControl(websocket.CloseMessage, []byte("Closing connection while stopping trigger"), time.Now().Add(time.Second))
+	text := []byte("Closing connection while stopping trigger")
+	message := websocket.FormatCloseMessage(websocket.CloseGoingAway, string(text))
+	err := t.wsconn.WriteControl(websocket.CloseMessage, message, time.Now().Add(time.Second))
 	if err != nil {
 		t.logger.Warnf("Error received: [%s] while sending close message when Stopping Trigger", err)
 	}
