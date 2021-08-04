@@ -69,7 +69,7 @@ func (*Factory) New(config *trigger.Config) (trigger.Trigger, error) {
 		s.AutoReconnectAttempts = 15
 	}
 	if _, ok := config.Settings["AutoReconnectMaxDelay"]; !ok {
-		s.AutoReconnectAttempts = 30
+		s.AutoReconnectMaxDelay = 30
 	}
 	return &Trigger{settings: s, config: config, continuePing: true}, nil
 }
