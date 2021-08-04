@@ -251,7 +251,16 @@ func newActionHandler(rt *Trigger, handlerwrapper *HandlerWrapper, mode string) 
 
 		// params
 		defer func() {
-			err := conn.WriteControl(websocket.CloseMessage, []byte("Sending close message before closing connection while going out of trigger handler"), time.Now().Add(time.Second))
+			var code int
+			switch mode {
+			case ModeMessage:
+				code = websocket.CloseGoingAway
+			case ModeConnection:
+				code = websocket.CloseNormalClosure
+			}
+			text := []byte("Sending close message before closing connection while going out of trigger handler")
+			message := websocket.FormatCloseMessage(code, string(text))
+			err := conn.WriteControl(websocket.CloseMessage, message, time.Now().Add(time.Second))
 			if err != nil {
 				rt.logger.Warnf("Received error [%s] while writing close message", err)
 			}
