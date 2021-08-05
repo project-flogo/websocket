@@ -65,10 +65,10 @@ func (*Factory) New(config *trigger.Config) (trigger.Trigger, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, ok := config.Settings["AutoReconnectAttempts"]; !ok {
+	if _, ok := config.Settings["autoReconnectAttempts"]; !ok {
 		s.AutoReconnectAttempts = 15
 	}
-	if _, ok := config.Settings["AutoReconnectMaxDelay"]; !ok {
+	if _, ok := config.Settings["autoReconnectMaxDelay"]; !ok {
 		s.AutoReconnectMaxDelay = 30
 	}
 	return &Trigger{settings: s, config: config, continuePing: true}, nil
@@ -173,6 +173,7 @@ func connect(t *Trigger) error {
 	t.mu.Lock()
 	t.wsconn = conn
 	t.mu.Unlock()
+	t.logger.Infof("websocket connection [%p] established successfully", t.wsconn)
 	return nil
 }
 
@@ -233,6 +234,9 @@ func close(t *Trigger) {
 }
 
 func (r *retry) retryConnection(t *Trigger) error {
+	if r.maxReconAttempts <= 0 {
+		return fmt.Errorf("No retry attempt as AutoReconnectAttempts configured value is [%d]", r.maxReconAttempts)
+	}
 	if r.attempts < r.maxReconAttempts {
 		// exponential backoff truncated to max delay
 		dur := time.Duration(r.attempts*2) * time.Second
@@ -241,10 +245,10 @@ func (r *retry) retryConnection(t *Trigger) error {
 		}
 		time.Sleep(dur)
 		r.attempts++
-		t.logger.Infof("******Websocket Connection retry attempt [%d]", r.attempts)
+		t.logger.Infof("Websocket Connection retry attempt [%d]", r.attempts)
 		if e := connect(t); e != nil {
 			if r.attempts == r.maxReconAttempts {
-				return e
+				return fmt.Errorf("Exhausted all retry attempts [%d] with err: [%s]", r.attempts, e.Error())
 			} else {
 				return r.retryConnection(t)
 			}
@@ -346,7 +350,7 @@ func (t *Trigger) Stop() error {
 	if err != nil {
 		t.logger.Warnf("Error received: [%s] while sending close message when Stopping Trigger", err)
 	}
-	t.wsconn.Close()
+	close(t)
 	defer t.logger.Info("Trigger %s Stopped", t.config.Id)
 	return nil
 }
